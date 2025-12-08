@@ -9,11 +9,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import pro.sihao.jarvis.data.repository.ProviderRepository
 import pro.sihao.jarvis.data.database.entity.LLMProviderEntity
+import pro.sihao.jarvis.data.service.ProviderHealthResult
+import pro.sihao.jarvis.data.service.ProviderHealthService
 import javax.inject.Inject
 
 @HiltViewModel
 class ProviderListViewModel @Inject constructor(
-    private val providerRepository: ProviderRepository
+    private val providerRepository: ProviderRepository,
+    private val providerHealthService: ProviderHealthService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProviderListUiState())
@@ -65,6 +68,28 @@ class ProviderListViewModel @Inject constructor(
                     error = "Failed to delete provider: ${e.message}"
                 )
             }
+        }
+    }
+
+    suspend fun checkProviderHealth(providerId: Long): ProviderHealthResult {
+        return try {
+            providerHealthService.checkProviderHealth(providerId)
+        } catch (e: Exception) {
+            ProviderHealthResult(
+                providerId = providerId,
+                providerName = "Unknown",
+                isHealthy = false,
+                responseTime = 0L,
+                error = e.message ?: "Health check failed"
+            )
+        }
+    }
+
+    suspend fun checkAllProvidersHealth(): List<ProviderHealthResult> {
+        return try {
+            providerHealthService.checkAllProvidersHealth()
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 }

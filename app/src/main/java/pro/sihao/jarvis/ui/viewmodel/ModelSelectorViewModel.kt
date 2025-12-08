@@ -15,7 +15,13 @@ import pro.sihao.jarvis.data.network.api.OpenAICompatibleApiService
 import pro.sihao.jarvis.data.network.dto.ModelsResponse
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import okhttp3.OkHttpClient
 import javax.inject.Inject
+import java.util.concurrent.TimeUnit
+
+// Cache constants
+private const val CACHE_DURATION_MS = 30 * 60 * 1000L // 30 minutes
+private const val CACHE_PROVIDER_ID = "model_discovery_cache"
 
 @HiltViewModel
 class ModelSelectorViewModel @Inject constructor(
@@ -26,6 +32,9 @@ class ModelSelectorViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ModelSelectorUiState())
     val uiState: StateFlow<ModelSelectorUiState> = _uiState.asStateFlow()
+
+    // Simple cache for discovered models (providerId -> list of models with timestamp)
+    private val modelCache = mutableMapOf<Long, Pair<List<String>, Long>>()
 
     fun loadModelsForProvider(providerId: Long) {
         viewModelScope.launch {
@@ -106,6 +115,20 @@ class ModelSelectorViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // Check cache first
+                val currentTime = System.currentTimeMillis()
+                val cachedData = modelCache[providerId]
+
+                if (cachedData != null && (currentTime - cachedData.second) < CACHE_DURATION_MS) {
+                    // Use cached data
+                    _uiState.value = _uiState.value.copy(
+                        isDiscoveringModels = false,
+                        discoveredModels = cachedData.first,
+                        discoveryError = null
+                    )
+                    return@launch
+                }
+
                 _uiState.value = _uiState.value.copy(isDiscoveringModels = true, discoveryError = null)
 
                 // Get provider info
@@ -128,13 +151,29 @@ class ModelSelectorViewModel @Inject constructor(
                     return@launch
                 }
 
-                // Create API service and fetch models
-                val apiService = createApiService(provider.baseUrl)
+                // Create API service with timeout
+                val retrofit = Retrofit.Builder()
+                    .baseUrl(provider.baseUrl)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .client(
+                        OkHttpClient.Builder()
+                            .connectTimeout(30, TimeUnit.SECONDS)
+                            .readTimeout(30, TimeUnit.SECONDS)
+                            .writeTimeout(30, TimeUnit.SECONDS)
+                            .build()
+                    )
+                    .build()
+
+                val apiService = retrofit.create(OpenAICompatibleApiService::class.java)
                 val response = apiService.listModels("Bearer $apiKey")
 
                 if (response.isSuccessful) {
                     val responseModel = response.body()
                     val discoveredModels = responseModel?.data?.map { it.id } ?: emptyList()
+
+                    // Update cache
+                    modelCache[providerId] = Pair(discoveredModels, currentTime)
+
                     _uiState.value = _uiState.value.copy(
                         isDiscoveringModels = false,
                         discoveredModels = discoveredModels,

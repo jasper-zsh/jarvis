@@ -15,10 +15,10 @@
 
 ## 3. Provider Management Backend
 - [x] 3.1 Update LLMServiceImpl to use database configuration instead of SharedPreferences
-- [ ] 3.2 Implement provider health checking and validation
-- [ ] 3.3 Create service for dynamic model discovery from provider APIs
-- [ ] 3.4 Add caching layer for provider model catalogs
-- [ ] 3.5 Implement error handling for provider connectivity issues
+- [x] 3.2 Implement provider health checking and validation
+- [x] 3.3 Create service for dynamic model discovery from provider APIs
+- [x] 3.4 Add caching layer for provider model catalogs
+- [x] 3.5 Implement error handling for provider connectivity issues
 
 ## 4. Model Manager UI Components
 - [x] 4.1 Create ProviderListScreen composable for managing provider configurations
@@ -28,18 +28,18 @@
 - [x] 4.5 Add loading states and error handling for all UI components
 
 ## 5. Settings Integration
-- [ ] 5.1 Update SettingsViewModel to integrate with new provider repositories
+- [x] 5.1 Update SettingsViewModel to integrate with new provider repositories
 - [x] 5.2 Add navigation routes to provider and model management screens
 - [x] 5.3 Update existing settings screen to include provider management entry points
-- [ ] 5.4 Implement settings persistence and restore functionality
+- [x] 5.4 Implement settings persistence and restore functionality
 - [x] 5.5 Add settings validation and user feedback mechanisms
 
 ## 6. Chat Model Selection
-- [ ] 6.1 Update ChatViewModel to support dynamic model switching
-- [ ] 6.2 Create ModelSwitcher composable for in-chat model selection
-- [ ] 6.3 Add model status indicator to chat interface
-- [ ] 6.4 Implement context adaptation when switching between models
-- [ ] 6.5 Add error handling for model unavailability scenarios
+- [x] 6.1 Update ChatViewModel to support dynamic model switching
+- [x] 6.2 Create ModelSwitcher composable for in-chat model selection
+- [x] 6.3 Add model status indicator to chat interface
+- [x] 6.4 Implement context adaptation when switching between models
+- [x] 6.5 Add error handling for model unavailability scenarios
 
 ## 7. Testing and Validation
 - [ ] 7.1 Create unit tests for database entities and DAOs

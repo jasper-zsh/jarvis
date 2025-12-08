@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pro.sihao.jarvis.data.database.entity.LLMProviderEntity
 import pro.sihao.jarvis.ui.viewmodel.ProviderListViewModel
+import pro.sihao.jarvis.ui.components.ProviderHealthIndicator
+import pro.sihao.jarvis.ui.components.ProviderHealthDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,6 +31,7 @@ fun ProviderListScreen(
     viewModel: ProviderListViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showHealthDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadProviders()
@@ -49,6 +52,17 @@ fun ProviderListScreen(
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = "Back"
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { showHealthDialog = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Health Check",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -140,18 +154,33 @@ fun ProviderListScreen(
                         contentPadding = PaddingValues(vertical = 16.dp)
                     ) {
                         items(uiState.providers) { provider ->
-                            ProviderListItem(
-                                provider = provider,
-                                onEditClick = { onEditProviderClick(provider) },
-                                onDeleteClick = { viewModel.deleteProvider(provider) },
-                                onToggleActiveClick = {
-                                    viewModel.toggleProviderActive(provider.id, !provider.isActive)
-                                },
-                                onManageModelsClick = { onManageModelsClick(provider.id, provider.displayName) }
-                            )
+                            Column {
+                                ProviderListItem(
+                                    provider = provider,
+                                    onEditClick = { onEditProviderClick(provider) },
+                                    onDeleteClick = { viewModel.deleteProvider(provider) },
+                                    onToggleActiveClick = {
+                                        viewModel.toggleProviderActive(provider.id, !provider.isActive)
+                                    },
+                                    onManageModelsClick = { onManageModelsClick(provider.id, provider.displayName) }
+                                )
+
+                                // Health indicator for each provider
+                                ProviderHealthIndicator(
+                                    providerId = provider.id,
+                                    providerName = provider.displayName
+                                )
+                            }
                         }
                     }
                 }
+            }
+
+            // Health check dialog
+            if (showHealthDialog) {
+                ProviderHealthDialog(
+                    onDismiss = { showHealthDialog = false }
+                )
             }
         }
     }

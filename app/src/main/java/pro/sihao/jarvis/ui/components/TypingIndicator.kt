@@ -25,7 +25,7 @@ fun TypingIndicator(
         animationSpec = infiniteRepeatable(
             animation = tween(600, easing = EaseInOutCubic),
             repeatMode = RepeatMode.Reverse,
-            initialStartOffset = StartOffset(0)
+            initialStartOffset = StartOffset(0, StartOffsetType.FastForward)
         ),
         label = "alphaDot1"
     )
@@ -36,7 +36,7 @@ fun TypingIndicator(
         animationSpec = infiniteRepeatable(
             animation = tween(600, easing = EaseInOutCubic),
             repeatMode = RepeatMode.Reverse,
-            initialStartOffset = StartOffset(200)
+            initialStartOffset = StartOffset(200, StartOffsetType.FastForward)
         ),
         label = "alphaDot2"
     )
@@ -47,7 +47,7 @@ fun TypingIndicator(
         animationSpec = infiniteRepeatable(
             animation = tween(600, easing = EaseInOutCubic),
             repeatMode = RepeatMode.Reverse,
-            initialStartOffset = StartOffset(400)
+            initialStartOffset = StartOffset(400, StartOffsetType.FastForward)
         ),
         label = "alphaDot3"
     )

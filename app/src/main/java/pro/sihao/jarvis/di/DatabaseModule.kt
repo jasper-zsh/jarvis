@@ -28,4 +28,10 @@ object DatabaseModule {
 
     @Provides
     fun provideMessageDao(database: JarvisDatabase) = database.messageDao()
+
+    @Provides
+    fun provideLLMProviderDao(database: JarvisDatabase) = database.llmProviderDao()
+
+    @Provides
+    fun provideModelConfigDao(database: JarvisDatabase) = database.modelConfigDao()
 }

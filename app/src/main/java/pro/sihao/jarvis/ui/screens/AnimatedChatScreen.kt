@@ -67,6 +67,7 @@ fun AnimatedChatScreen(
         delay(300)
         isEntering = false
         viewModel.refreshApiKeyStatus()
+        viewModel.refreshAvailableModels()
     }
 
     Scaffold(
@@ -85,11 +86,16 @@ fun AnimatedChatScreen(
             ) {
                 TopAppBar(
                     title = {
-                        Text(
-                            text = "Jarvis",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Text(
+                                text = "Jarvis",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp
+                            )
+                            ModelStatusIndicator()
+                        }
                     },
                     actions = {
                         IconButton(onClick = onNavigateToSettings) {

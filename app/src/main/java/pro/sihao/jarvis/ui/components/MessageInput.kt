@@ -43,15 +43,14 @@ fun MessageInput(
                     },
                     shape = RoundedCornerShape(24.dp),
                     maxLines = 4,
-                    enabled = !isLoading
+                    readOnly = isLoading
                 )
 
                 if (message.isNotBlank() && !isLoading) {
                     FloatingActionButton(
                         onClick = onSendClick,
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(56.dp)
+                        modifier = Modifier.size(56.dp),
+                        containerColor = MaterialTheme.colorScheme.primary
                     ) {
                         Icon(
                             Icons.Filled.Send,

@@ -30,6 +30,13 @@ class SecureStorage @Inject constructor(
         private const val MODEL_NAME = "model_name"
         private const val TEMPERATURE = "temperature"
         private const val MAX_TOKENS = "max_tokens"
+
+        // Provider-specific API keys
+        private const val API_KEY_PREFIX = "api_key_"
+
+        // Active selections
+        private const val ACTIVE_PROVIDER_ID = "active_provider_id"
+        private const val ACTIVE_MODEL_CONFIG_ID = "active_model_config_id"
     }
 
     // API Key methods (now provider-agnostic)
@@ -114,5 +121,84 @@ class SecureStorage @Inject constructor(
 
     fun getMaxTokens(): Int {
         return sharedPreferences.getInt(MAX_TOKENS, 1000)
+    }
+
+    // Provider-specific API key methods
+    fun saveApiKeyForProvider(providerId: Long, apiKey: String) {
+        sharedPreferences.edit()
+            .putString("${API_KEY_PREFIX}${providerId}", apiKey)
+            .apply()
+    }
+
+    fun getApiKeyForProvider(providerId: Long): String? {
+        return sharedPreferences.getString("${API_KEY_PREFIX}${providerId}", null)
+    }
+
+    fun removeApiKeyForProvider(providerId: Long) {
+        sharedPreferences.edit()
+            .remove("${API_KEY_PREFIX}${providerId}")
+            .apply()
+    }
+
+    fun hasApiKeyForProvider(providerId: Long): Boolean {
+        return !getApiKeyForProvider(providerId).isNullOrEmpty()
+    }
+
+    // Active selection methods (coordinate with database)
+    fun saveActiveProviderId(providerId: Long) {
+        sharedPreferences.edit()
+            .putLong(ACTIVE_PROVIDER_ID, providerId)
+            .apply()
+    }
+
+    fun getActiveProviderId(): Long {
+        return sharedPreferences.getLong(ACTIVE_PROVIDER_ID, -1)
+    }
+
+    fun removeActiveProviderId() {
+        sharedPreferences.edit()
+            .remove(ACTIVE_PROVIDER_ID)
+            .apply()
+    }
+
+    fun hasActiveProviderId(): Boolean {
+        return getActiveProviderId() != -1L
+    }
+
+    fun saveActiveModelConfigId(modelConfigId: Long) {
+        sharedPreferences.edit()
+            .putLong(ACTIVE_MODEL_CONFIG_ID, modelConfigId)
+            .apply()
+    }
+
+    fun getActiveModelConfigId(): Long {
+        return sharedPreferences.getLong(ACTIVE_MODEL_CONFIG_ID, -1)
+    }
+
+    fun removeActiveModelConfigId() {
+        sharedPreferences.edit()
+            .remove(ACTIVE_MODEL_CONFIG_ID)
+            .apply()
+    }
+
+    fun hasActiveModelConfigId(): Boolean {
+        return getActiveModelConfigId() != -1L
+    }
+
+    // Migration and cleanup methods
+    fun clearLegacySettings() {
+        sharedPreferences.edit()
+            .remove(API_PROVIDER)
+            .remove(BASE_URL)
+            .remove(MODEL_NAME)
+            .remove(TEMPERATURE)
+            .remove(MAX_TOKENS)
+            .apply()
+    }
+
+    fun isLegacySettingsPresent(): Boolean {
+        return !sharedPreferences.getString(API_PROVIDER, null).isNullOrEmpty() ||
+               !sharedPreferences.getString(BASE_URL, null).isNullOrEmpty() ||
+               !sharedPreferences.getString(MODEL_NAME, null).isNullOrEmpty()
     }
 }

@@ -7,6 +7,6 @@ interface LLMService {
     suspend fun sendMessage(
         message: String,
         conversationHistory: List<Message>,
-        apiKey: String
+        apiKey: String? = null
     ): Flow<Result<String>>
 }

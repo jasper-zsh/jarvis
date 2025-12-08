@@ -69,9 +69,10 @@ fun OptimizedChatScreen(
         }
     }
 
-    // Refresh API key status when screen becomes visible
+    // Refresh API key status and available models when screen becomes visible
     LaunchedEffect(Unit) {
         viewModel.refreshApiKeyStatus()
+        viewModel.refreshAvailableModels()
     }
 
     Scaffold(
@@ -79,11 +80,16 @@ fun OptimizedChatScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Jarvis",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Text(
+                            text = "Jarvis",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
+                        ModelStatusIndicator()
+                    }
                 },
                 actions = {
                     IconButton(onClick = onNavigateToSettings) {

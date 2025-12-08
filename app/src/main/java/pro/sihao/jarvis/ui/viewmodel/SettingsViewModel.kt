@@ -10,13 +10,20 @@ import pro.sihao.jarvis.data.network.APIConfig
 import pro.sihao.jarvis.data.network.api.OpenAICompatibleApiService
 import pro.sihao.jarvis.data.network.dto.ModelsResponse
 import pro.sihao.jarvis.data.storage.SecureStorage
+import pro.sihao.jarvis.data.repository.ProviderRepository
+import pro.sihao.jarvis.data.repository.ModelConfigRepository
+import pro.sihao.jarvis.data.repository.ProviderConfig
+import pro.sihao.jarvis.data.repository.ModelConfiguration
+import pro.sihao.jarvis.data.database.entity.LLMProviderEntity
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val secureStorage: SecureStorage
+    private val secureStorage: SecureStorage,
+    private val providerRepository: ProviderRepository,
+    private val modelConfigRepository: ModelConfigRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -229,6 +236,16 @@ class SettingsViewModel @Inject constructor(
 
     fun getAvailableProviders(): List<String> {
         return listOf("OPENAI", "DEEPSEEK", "LOCAL_AI", "TOGETHER_AI", "GROQ")
+    }
+
+    // New method to get providers from database with display names
+    fun getProvidersWithDisplayNames(): List<String> {
+        return listOf("OpenAI", "DeepSeek", "Local AI", "Together AI", "Groq")
+    }
+
+    // Method to check if provider management is available
+    fun isProviderManagementAvailable(): Boolean {
+        return true // Always available now that we have the UI
     }
 }
 

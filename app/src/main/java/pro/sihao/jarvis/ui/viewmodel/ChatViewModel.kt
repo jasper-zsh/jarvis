@@ -7,6 +7,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import pro.sihao.jarvis.data.network.NetworkMonitor
 import pro.sihao.jarvis.data.storage.SecureStorage
+import pro.sihao.jarvis.data.repository.ProviderRepository
+import pro.sihao.jarvis.data.repository.ModelConfigRepository
+import pro.sihao.jarvis.data.repository.ModelConfiguration
 import pro.sihao.jarvis.domain.model.Message
 import pro.sihao.jarvis.domain.repository.MessageRepository
 import pro.sihao.jarvis.domain.service.LLMService
@@ -18,7 +21,9 @@ class ChatViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
     private val llmService: LLMService,
     private val secureStorage: SecureStorage,
-    private val networkMonitor: NetworkMonitor
+    private val networkMonitor: NetworkMonitor,
+    private val providerRepository: ProviderRepository,
+    private val modelConfigRepository: ModelConfigRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -28,6 +33,8 @@ class ChatViewModel @Inject constructor(
         loadMessages()
         checkApiKey()
         observeNetworkState()
+        loadAvailableModels()
+        loadCurrentModel()
     }
 
     private fun loadMessages() {
@@ -39,7 +46,15 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun checkApiKey() {
-        _uiState.update { it.copy(hasApiKey = secureStorage.hasApiKey()) }
+        viewModelScope.launch {
+            val activeProviderId = secureStorage.getActiveProviderId()
+            val hasApiKey = if (activeProviderId != -1L) {
+                secureStorage.hasApiKeyForProvider(activeProviderId)
+            } else {
+                false
+            }
+            _uiState.update { it.copy(hasApiKey = hasApiKey) }
+        }
     }
 
     fun refreshApiKeyStatus() {
@@ -62,11 +77,10 @@ class ChatViewModel @Inject constructor(
         val currentMessage = _uiState.value.inputMessage.trim()
         if (currentMessage.isBlank()) return
 
-        val apiKey = secureStorage.getApiKey()
-        if (apiKey.isNullOrBlank()) {
+        if (!uiState.value.hasApiKey) {
             _uiState.update {
                 it.copy(
-                    errorMessage = "Please set up your API key first"
+                    errorMessage = "Please configure a provider with API key first"
                 )
             }
             return
@@ -116,7 +130,7 @@ class ChatViewModel @Inject constructor(
                 val messages = _uiState.value.messages + userMessage
 
                 // Send to LLM service
-                llmService.sendMessage(currentMessage, messages, apiKey).collect { result ->
+                llmService.sendMessage(currentMessage, messages, null).collect { result ->
                     result.fold(
                         onSuccess = { aiResponse ->
                             // Remove loading message and add actual AI response
@@ -169,6 +183,184 @@ class ChatViewModel @Inject constructor(
     fun onApiKeyUpdated() {
         checkApiKey()
     }
+
+    // Model selection methods
+
+    private fun loadAvailableModels() {
+        viewModelScope.launch {
+            try {
+                val activeProviders = providerRepository.getActiveProviders().first()
+                val allModels = mutableListOf<ModelConfiguration>()
+
+                activeProviders.forEach { provider ->
+                    val models = modelConfigRepository.getActiveModelsForProvider(provider.id).first()
+                    allModels.addAll(models)
+                }
+
+                _uiState.update { it.copy(availableModels = allModels) }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(modelSwitchingError = "Failed to load models: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun refreshAvailableModels() {
+        loadAvailableModels()
+    }
+
+    private fun loadCurrentModel() {
+        viewModelScope.launch {
+            try {
+                val activeModelConfigId = secureStorage.getActiveModelConfigId()
+                if (activeModelConfigId != -1L) {
+                    val modelConfig = modelConfigRepository.getModelConfigById(activeModelConfigId)
+                    _uiState.update { it.copy(currentModel = modelConfig?.let {
+                        ModelConfiguration(
+                            id = it.id,
+                            providerId = it.providerId,
+                            modelName = it.modelName,
+                            displayName = it.displayName,
+                            maxTokens = it.maxTokens,
+                            contextWindow = it.contextWindow,
+                            inputCostPer1K = it.inputCostPer1K,
+                            outputCostPer1K = it.outputCostPer1K,
+                            temperature = it.temperature,
+                            topP = it.topP,
+                            isActive = it.isActive,
+                            isDefault = it.isDefault,
+                            description = it.description,
+                            capabilities = it.capabilities
+                        )
+                    }) }
+                } else {
+                    // No model configured - try to auto-select a default model
+                    tryAutoSelectDefaultModel()
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(modelSwitchingError = "Failed to load current model: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun tryAutoSelectDefaultModel() {
+        viewModelScope.launch {
+            try {
+                // Get the active provider first
+                val activeProviderId = secureStorage.getActiveProviderId()
+                if (activeProviderId != -1L) {
+                    // Try to find a default model for this provider
+                    val defaultModel = modelConfigRepository.getDefaultModelForProvider(activeProviderId)
+                    if (defaultModel != null) {
+                        // Auto-select this model
+                        secureStorage.saveActiveModelConfigId(defaultModel.id)
+                        val modelConfig = ModelConfiguration(
+                            id = defaultModel.id,
+                            providerId = defaultModel.providerId,
+                            modelName = defaultModel.modelName,
+                            displayName = defaultModel.displayName,
+                            maxTokens = defaultModel.maxTokens,
+                            contextWindow = defaultModel.contextWindow,
+                            inputCostPer1K = defaultModel.inputCostPer1K,
+                            outputCostPer1K = defaultModel.outputCostPer1K,
+                            temperature = defaultModel.temperature,
+                            topP = defaultModel.topP,
+                            isActive = defaultModel.isActive,
+                            isDefault = defaultModel.isDefault,
+                            description = defaultModel.description,
+                            capabilities = defaultModel.capabilities
+                        )
+                        _uiState.update { it.copy(currentModel = modelConfig) }
+                        // Re-check API key status after setting the model
+                        checkApiKey()
+                        return@launch
+                    }
+                }
+
+                // If no default model found, try to get any active model
+                val activeModel = modelConfigRepository.getFirstActiveModel()
+                if (activeModel != null) {
+                    secureStorage.saveActiveModelConfigId(activeModel.id)
+                    secureStorage.saveActiveProviderId(activeModel.providerId)
+                    val modelConfig = ModelConfiguration(
+                        id = activeModel.id,
+                        providerId = activeModel.providerId,
+                        modelName = activeModel.modelName,
+                        displayName = activeModel.displayName,
+                        maxTokens = activeModel.maxTokens,
+                        contextWindow = activeModel.contextWindow,
+                        inputCostPer1K = activeModel.inputCostPer1K,
+                        outputCostPer1K = activeModel.outputCostPer1K,
+                        temperature = activeModel.temperature,
+                        topP = activeModel.topP,
+                        isActive = activeModel.isActive,
+                        isDefault = activeModel.isDefault,
+                        description = activeModel.description,
+                        capabilities = activeModel.capabilities
+                    )
+                    _uiState.update { it.copy(currentModel = modelConfig) }
+                    // Re-check API key status after setting the model
+                    checkApiKey()
+                } else {
+                    // No models available at all
+                    _uiState.update { it.copy(currentModel = null) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(currentModel = null) }
+            }
+        }
+    }
+
+    fun refreshCurrentModel() {
+        loadCurrentModel()
+    }
+
+    fun toggleModelSwitcher() {
+        _uiState.update { it.copy(showModelSwitcher = !it.showModelSwitcher) }
+    }
+
+    fun selectModel(model: ModelConfiguration) {
+        viewModelScope.launch {
+            try {
+                // Set the active model configuration
+                secureStorage.saveActiveModelConfigId(model.id)
+                secureStorage.saveActiveProviderId(model.providerId)
+
+                _uiState.update {
+                    it.copy(
+                        currentModel = model,
+                        showModelSwitcher = false,
+                        modelSwitchingError = null
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(modelSwitchingError = "Failed to select model: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun clearModelSwitchingError() {
+        _uiState.update { it.copy(modelSwitchingError = null) }
+    }
+
+    fun refreshModels() {
+        loadAvailableModels()
+        loadCurrentModel()
+    }
+
+    fun getCurrentModelInfo(): String {
+        val model = _uiState.value.currentModel
+        return if (model != null) {
+            "${model.displayName} (${model.modelName})"
+        } else {
+            "No model selected"
+        }
+    }
 }
 
 data class ChatUiState(
@@ -178,5 +370,10 @@ data class ChatUiState(
     val errorMessage: String? = null,
     val hasApiKey: Boolean = false,
     val isConnected: Boolean = false,
-    val navigateToSettings: Boolean = false
+    val navigateToSettings: Boolean = false,
+    // Model selection information
+    val availableModels: List<ModelConfiguration> = emptyList(),
+    val currentModel: ModelConfiguration? = null,
+    val showModelSwitcher: Boolean = false,
+    val modelSwitchingError: String? = null
 )

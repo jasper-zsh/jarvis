@@ -21,6 +21,17 @@ class MessageRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getRecentMessages(limit: Int): Flow<List<Message>> {
+        return database.messageDao().getRecentMessages(limit).map { entities ->
+            MessageMapper.toDomainList(entities)
+        }
+    }
+
+    override suspend fun getMessagesPaginated(limit: Int, offset: Int): List<Message> {
+        val entities = database.messageDao().getMessagesPaginated(limit, offset)
+        return MessageMapper.toDomainList(entities)
+    }
+
     override suspend fun insertMessage(message: Message): Long {
         val entity = MessageMapper.toEntity(message)
         return database.messageDao().insertMessage(entity)

@@ -15,6 +15,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages ORDER BY timestamp DESC LIMIT :limit")
     fun getRecentMessages(limit: Int = 50): Flow<List<MessageEntity>>
 
+    @Query("SELECT * FROM messages ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    suspend fun getMessagesPaginated(limit: Int, offset: Int): List<MessageEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity): Long
 

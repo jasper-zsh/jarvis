@@ -41,9 +41,6 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
 
-    // Include Mercury Android SDK AAR
-    implementation(files("libs/MercuryAndroidSDK-v0.2.2-20250717110238_48b655b3.aar"))
-
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

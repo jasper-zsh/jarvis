@@ -10,14 +10,14 @@ import kotlinx.coroutines.launch
 import pro.sihao.jarvis.domain.service.LLMService
 import pro.sihao.jarvis.domain.model.Message
 import pro.sihao.jarvis.data.repository.ModelConfiguration
-import pro.sihao.jarvis.data.storage.SecureStorage
+import pro.sihao.jarvis.data.repository.ProviderRepository
 import java.util.*
 import javax.inject.Inject
 
 @HiltViewModel
 class ModelTestViewModel @Inject constructor(
     private val llmService: LLMService,
-    private val secureStorage: SecureStorage
+    private val providerRepository: ProviderRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ModelTestUiState())
@@ -48,7 +48,7 @@ class ModelTestViewModel @Inject constructor(
                 val startTime = System.currentTimeMillis()
 
                 // Get API key for the provider
-                val apiKey = secureStorage.getApiKeyForProvider(currentState.testModel!!.providerId)
+                val apiKey = providerRepository.getApiKeyForProvider(currentState.testModel!!.providerId)
 
                 if (apiKey.isNullOrEmpty()) {
                     _uiState.value = currentState.copy(

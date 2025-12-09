@@ -10,7 +10,6 @@ import kotlinx.coroutines.launch
 import pro.sihao.jarvis.data.repository.ModelConfigRepository
 import pro.sihao.jarvis.data.repository.ProviderRepository
 import pro.sihao.jarvis.data.repository.ModelConfiguration
-import pro.sihao.jarvis.data.storage.SecureStorage
 import pro.sihao.jarvis.data.network.api.OpenAICompatibleApiService
 import pro.sihao.jarvis.data.network.dto.ModelsResponse
 import retrofit2.Retrofit
@@ -26,8 +25,7 @@ private const val CACHE_PROVIDER_ID = "model_discovery_cache"
 @HiltViewModel
 class ModelSelectorViewModel @Inject constructor(
     private val modelConfigRepository: ModelConfigRepository,
-    private val providerRepository: ProviderRepository,
-    private val secureStorage: SecureStorage
+    private val providerRepository: ProviderRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ModelSelectorUiState())
@@ -142,7 +140,7 @@ class ModelSelectorViewModel @Inject constructor(
                 }
 
                 // Get API key
-                val apiKey = secureStorage.getApiKeyForProvider(providerId)
+                val apiKey = providerRepository.getApiKeyForProvider(providerId)
                 if (apiKey.isNullOrEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         isDiscoveringModels = false,

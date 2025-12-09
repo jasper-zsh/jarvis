@@ -8,9 +8,9 @@ import okhttp3.logging.HttpLoggingInterceptor
 import pro.sihao.jarvis.data.network.api.OpenAICompatibleApiService
 import pro.sihao.jarvis.data.network.dto.OpenAIRequest
 import pro.sihao.jarvis.data.network.dto.OpenAIResponse
-import pro.sihao.jarvis.data.storage.SecureStorage
 import pro.sihao.jarvis.data.repository.ProviderRepository
 import pro.sihao.jarvis.data.repository.ModelConfigRepository
+import pro.sihao.jarvis.data.repository.ModelConfiguration
 import pro.sihao.jarvis.data.database.entity.LLMProviderEntity
 import pro.sihao.jarvis.data.database.entity.ModelConfigEntity
 import pro.sihao.jarvis.domain.model.Message
@@ -23,21 +23,15 @@ import javax.inject.Singleton
 
 @Singleton
 class LLMServiceImpl @Inject constructor(
-    private val secureStorage: SecureStorage,
     private val providerRepository: ProviderRepository,
     private val modelConfigRepository: ModelConfigRepository
 ) : LLMService {
 
     // Get active API service based on database configuration
     private suspend fun getActiveApiService(): OpenAICompatibleApiService {
-        val activeProviderId = secureStorage.getActiveProviderId()
-        val provider = if (activeProviderId != -1L) {
-            providerRepository.getProviderById(activeProviderId)
-        } else {
-            null
-        }
+        val activeProvider = providerRepository.getActiveProvider()
 
-        val baseUrl = provider?.baseUrl ?: APIConfig.OPENAI.baseUrl
+        val baseUrl = activeProvider?.baseUrl ?: APIConfig.OPENAI.baseUrl
 
         val logging = HttpLoggingInterceptor()
         logging.setLevel(HttpLoggingInterceptor.Level.BODY)
@@ -57,21 +51,14 @@ class LLMServiceImpl @Inject constructor(
             .create(OpenAICompatibleApiService::class.java)
     }
 
-  
     // Get active model configuration
-    private suspend fun getActiveModelConfig(): ModelConfigEntity? {
-        val activeModelConfigId = secureStorage.getActiveModelConfigId()
-        return if (activeModelConfigId != -1L) {
-            modelConfigRepository.getModelConfigById(activeModelConfigId)
-        } else {
-            // Fallback to legacy settings or provider default
-            null
-        }
+    private suspend fun getActiveModelConfig(): ModelConfiguration? {
+        return modelConfigRepository.getActiveModelConfig()
     }
 
     // Get API key for active provider
     private suspend fun getApiKeyForActiveProvider(providerId: Long): String? {
-        return secureStorage.getApiKeyForProvider(providerId)
+        return providerRepository.getApiKeyForProvider(providerId)
     }
 
     override suspend fun sendMessage(
@@ -80,13 +67,8 @@ class LLMServiceImpl @Inject constructor(
         apiKey: String?
     ): Flow<Result<String>> = flow {
         try {
-            // Get active provider and model configuration
-            val activeProviderId = secureStorage.getActiveProviderId()
-            val provider = if (activeProviderId != -1L) {
-                providerRepository.getProviderById(activeProviderId)
-            } else {
-                null
-            }
+            // Get active provider
+            val provider = providerRepository.getActiveProvider()
 
             if (provider == null) {
                 emit(Result.failure(Exception("No provider configured")))
@@ -143,8 +125,8 @@ class LLMServiceImpl @Inject constructor(
             val request = OpenAIRequest(
                 model = modelName,
                 messages = openAIMessages,
-                temperature = modelConfig?.temperature ?: secureStorage.getTemperature(),
-                max_tokens = modelConfig?.maxTokens ?: if (secureStorage.getMaxTokens() > 0) secureStorage.getMaxTokens() else null
+                temperature = modelConfig?.temperature ?: 0.7f,
+                max_tokens = modelConfig?.maxTokens
             )
 
             val response = apiService.createChatCompletion(

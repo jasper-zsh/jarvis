@@ -6,7 +6,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import pro.sihao.jarvis.data.repository.ProviderRepository
-import pro.sihao.jarvis.data.storage.SecureStorage
 import pro.sihao.jarvis.data.network.api.OpenAICompatibleApiService
 import pro.sihao.jarvis.data.network.dto.ModelsResponse
 import retrofit2.Retrofit
@@ -33,8 +32,7 @@ data class ProviderHealthResult(
  */
 @Singleton
 class ProviderHealthService @Inject constructor(
-    private val providerRepository: ProviderRepository,
-    private val secureStorage: SecureStorage
+    private val providerRepository: ProviderRepository
 ) {
 
     suspend fun checkProviderHealth(providerId: Long): ProviderHealthResult = withContext(Dispatchers.IO) {
@@ -64,7 +62,7 @@ class ProviderHealthService @Inject constructor(
 
         try {
             // Get API key
-            val apiKey = secureStorage.getApiKeyForProvider(providerId)
+            val apiKey = providerRepository.getApiKeyForProvider(providerId)
             if (apiKey.isNullOrEmpty()) {
                 return@withContext ProviderHealthResult(
                     providerId = providerId,

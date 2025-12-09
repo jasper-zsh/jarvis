@@ -3,6 +3,9 @@ package pro.sihao.jarvis.data.repository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import pro.sihao.jarvis.data.database.dao.ModelConfigDao
 import pro.sihao.jarvis.data.database.entity.ModelConfigEntity
 import javax.inject.Inject
@@ -10,8 +13,16 @@ import javax.inject.Singleton
 
 @Singleton
 class ModelConfigRepository @Inject constructor(
-    private val modelConfigDao: ModelConfigDao
+    private val modelConfigDao: ModelConfigDao,
+    @ApplicationContext private val context: Context
 ) {
+
+    companion object {
+        private const val PREFS_NAME = "model_config_prefs"
+        private const val ACTIVE_MODEL_CONFIG_ID = "active_model_config_id"
+    }
+
+    private val sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun getAllModelConfigs(): Flow<List<ModelConfigEntity>> = modelConfigDao.getAllModelConfigs()
 
@@ -148,6 +159,53 @@ class ModelConfigRepository @Inject constructor(
         } catch (e: Exception) {
             null
         }
+    }
+
+    // Active model configuration management
+    suspend fun getActiveModelConfigId(): Long {
+        return sharedPreferences.getLong(ACTIVE_MODEL_CONFIG_ID, -1L)
+    }
+
+    suspend fun getActiveModelConfig(): ModelConfiguration? {
+        val activeModelConfigId = getActiveModelConfigId()
+        return if (activeModelConfigId != -1L) {
+            getModelConfigById(activeModelConfigId)?.let { entity ->
+                ModelConfiguration(
+                    id = entity.id,
+                    providerId = entity.providerId,
+                    modelName = entity.modelName,
+                    displayName = entity.displayName,
+                    maxTokens = entity.maxTokens,
+                    contextWindow = entity.contextWindow,
+                    inputCostPer1K = entity.inputCostPer1K,
+                    outputCostPer1K = entity.outputCostPer1K,
+                    temperature = entity.temperature,
+                    topP = entity.topP,
+                    isActive = entity.isActive,
+                    isDefault = entity.isDefault,
+                    description = entity.description,
+                    capabilities = entity.capabilities
+                )
+            }
+        } else {
+            null
+        }
+    }
+
+    suspend fun setActiveModelConfig(modelConfigId: Long) {
+        sharedPreferences.edit()
+            .putLong(ACTIVE_MODEL_CONFIG_ID, modelConfigId)
+            .apply()
+    }
+
+    suspend fun removeActiveModelConfig() {
+        sharedPreferences.edit()
+            .remove(ACTIVE_MODEL_CONFIG_ID)
+            .apply()
+    }
+
+    suspend fun hasActiveModelConfig(): Boolean {
+        return getActiveModelConfigId() != -1L
     }
 }
 

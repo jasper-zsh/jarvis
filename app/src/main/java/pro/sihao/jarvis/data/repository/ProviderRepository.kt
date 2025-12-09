@@ -2,14 +2,17 @@ package pro.sihao.jarvis.data.repository
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import pro.sihao.jarvis.data.database.dao.LLMProviderDao
 import pro.sihao.jarvis.data.database.entity.LLMProviderEntity
+import pro.sihao.jarvis.data.encryption.ApikeyEncryption
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class ProviderRepository @Inject constructor(
-    private val llmProviderDao: LLMProviderDao
+    private val llmProviderDao: LLMProviderDao,
+    private val encryption: ApikeyEncryption
 ) {
 
     fun getAllProviders(): Flow<List<LLMProviderEntity>> = llmProviderDao.getAllProviders()
@@ -46,21 +49,48 @@ class ProviderRepository @Inject constructor(
         llmProviderDao.updateProviderActiveStatus(providerId, true)
     }
 
-    suspend fun getActiveProvider(): LLMProviderEntity? {
-        return try {
-            // This is a simplified approach - in a real implementation, you might want to
-            // collect the Flow or use a different method to get the first active provider
-            null // Placeholder - would need proper Flow collection
-        } catch (e: Exception) {
-            null
-        }
-    }
+    suspend fun getProviderCount(): Int = llmProviderDao.getProviderCount()
 
     suspend fun hasActiveProvider(): Boolean {
         return llmProviderDao.getActiveProviderCount() > 0
     }
 
-    suspend fun getProviderCount(): Int = llmProviderDao.getProviderCount()
+    // API Key management methods
+    suspend fun saveApiKeyForProvider(providerId: Long, apiKey: String) {
+        val provider = getProviderById(providerId) ?: return
+        val encryptedKeyRef = encryption.encryptApiKey(apiKey)
+        updateProvider(provider.copy(encryptedApiKey = encryptedKeyRef))
+    }
+
+    suspend fun getApiKeyForProvider(providerId: Long): String? {
+        val provider = getProviderById(providerId)
+        return provider?.let { encryption.decryptApiKey(it.encryptedApiKey) }
+    }
+
+    suspend fun hasApiKeyForProvider(providerId: Long): Boolean {
+        return !getApiKeyForProvider(providerId).isNullOrEmpty()
+    }
+
+    suspend fun removeApiKeyForProvider(providerId: Long) {
+        val provider = getProviderById(providerId) ?: return
+        provider.encryptedApiKey?.let { encryption.deleteApiKey(it) }
+        updateProvider(provider.copy(encryptedApiKey = null))
+    }
+
+    // Active provider management methods
+    suspend fun getActiveProvider(): LLMProviderEntity? {
+        return try {
+            val providers = getActiveProviders().first()
+            if (providers.isNotEmpty()) providers[0] else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun getActiveProviderId(): Long {
+        val activeProvider = getActiveProvider()
+        return activeProvider?.id ?: -1L
+    }
 
     // Convenience methods for provider configuration
     fun getProviderConfiguration(providerName: String): Flow<ProviderConfig?> {

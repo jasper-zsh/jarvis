@@ -23,6 +23,7 @@ data class LLMProviderEntity(
     val supportsModelDiscovery: Boolean = true,
     val maxTokens: Int? = null,
     val description: String? = null,
+    val encryptedApiKey: String? = null, // Encrypted API key storage
     val createdTimestamp: Long = System.currentTimeMillis(),
     val updatedTimestamp: Long = System.currentTimeMillis()
 )

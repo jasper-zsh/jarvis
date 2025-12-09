@@ -17,13 +17,7 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideJarvisDatabase(@ApplicationContext context: Context): JarvisDatabase {
-        return Room.databaseBuilder(
-            context,
-            JarvisDatabase::class.java,
-            "jarvis_database"
-        )
-        .fallbackToDestructiveMigration()
-        .build()
+        return JarvisDatabase.getDatabase(context)
     }
 
     @Provides

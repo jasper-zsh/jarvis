@@ -6,7 +6,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import pro.sihao.jarvis.data.network.NetworkMonitor
-import pro.sihao.jarvis.data.storage.SecureStorage
 import pro.sihao.jarvis.data.repository.ProviderRepository
 import pro.sihao.jarvis.data.repository.ModelConfigRepository
 import pro.sihao.jarvis.data.repository.ModelConfiguration
@@ -20,7 +19,6 @@ import javax.inject.Inject
 class ChatViewModel @Inject constructor(
     private val messageRepository: MessageRepository,
     private val llmService: LLMService,
-    private val secureStorage: SecureStorage,
     private val networkMonitor: NetworkMonitor,
     private val providerRepository: ProviderRepository,
     private val modelConfigRepository: ModelConfigRepository
@@ -47,9 +45,9 @@ class ChatViewModel @Inject constructor(
 
     private fun checkApiKey() {
         viewModelScope.launch {
-            val activeProviderId = secureStorage.getActiveProviderId()
+            val activeProviderId = providerRepository.getActiveProviderId()
             val hasApiKey = if (activeProviderId != -1L) {
-                secureStorage.hasApiKeyForProvider(activeProviderId)
+                providerRepository.hasApiKeyForProvider(activeProviderId)
             } else {
                 false
             }
@@ -213,27 +211,9 @@ class ChatViewModel @Inject constructor(
     private fun loadCurrentModel() {
         viewModelScope.launch {
             try {
-                val activeModelConfigId = secureStorage.getActiveModelConfigId()
-                if (activeModelConfigId != -1L) {
-                    val modelConfig = modelConfigRepository.getModelConfigById(activeModelConfigId)
-                    _uiState.update { it.copy(currentModel = modelConfig?.let {
-                        ModelConfiguration(
-                            id = it.id,
-                            providerId = it.providerId,
-                            modelName = it.modelName,
-                            displayName = it.displayName,
-                            maxTokens = it.maxTokens,
-                            contextWindow = it.contextWindow,
-                            inputCostPer1K = it.inputCostPer1K,
-                            outputCostPer1K = it.outputCostPer1K,
-                            temperature = it.temperature,
-                            topP = it.topP,
-                            isActive = it.isActive,
-                            isDefault = it.isDefault,
-                            description = it.description,
-                            capabilities = it.capabilities
-                        )
-                    }) }
+                val activeModelConfig = modelConfigRepository.getActiveModelConfig()
+                if (activeModelConfig != null) {
+                    _uiState.update { it.copy(currentModel = activeModelConfig) }
                 } else {
                     // No model configured - try to auto-select a default model
                     tryAutoSelectDefaultModel()
@@ -250,30 +230,14 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 // Get the active provider first
-                val activeProviderId = secureStorage.getActiveProviderId()
+                val activeProviderId = providerRepository.getActiveProviderId()
                 if (activeProviderId != -1L) {
                     // Try to find a default model for this provider
                     val defaultModel = modelConfigRepository.getDefaultModelForProvider(activeProviderId)
                     if (defaultModel != null) {
                         // Auto-select this model
-                        secureStorage.saveActiveModelConfigId(defaultModel.id)
-                        val modelConfig = ModelConfiguration(
-                            id = defaultModel.id,
-                            providerId = defaultModel.providerId,
-                            modelName = defaultModel.modelName,
-                            displayName = defaultModel.displayName,
-                            maxTokens = defaultModel.maxTokens,
-                            contextWindow = defaultModel.contextWindow,
-                            inputCostPer1K = defaultModel.inputCostPer1K,
-                            outputCostPer1K = defaultModel.outputCostPer1K,
-                            temperature = defaultModel.temperature,
-                            topP = defaultModel.topP,
-                            isActive = defaultModel.isActive,
-                            isDefault = defaultModel.isDefault,
-                            description = defaultModel.description,
-                            capabilities = defaultModel.capabilities
-                        )
-                        _uiState.update { it.copy(currentModel = modelConfig) }
+                        modelConfigRepository.setActiveModelConfig(defaultModel.id)
+                        _uiState.update { it.copy(currentModel = defaultModel) }
                         // Re-check API key status after setting the model
                         checkApiKey()
                         return@launch
@@ -283,25 +247,8 @@ class ChatViewModel @Inject constructor(
                 // If no default model found, try to get any active model
                 val activeModel = modelConfigRepository.getFirstActiveModel()
                 if (activeModel != null) {
-                    secureStorage.saveActiveModelConfigId(activeModel.id)
-                    secureStorage.saveActiveProviderId(activeModel.providerId)
-                    val modelConfig = ModelConfiguration(
-                        id = activeModel.id,
-                        providerId = activeModel.providerId,
-                        modelName = activeModel.modelName,
-                        displayName = activeModel.displayName,
-                        maxTokens = activeModel.maxTokens,
-                        contextWindow = activeModel.contextWindow,
-                        inputCostPer1K = activeModel.inputCostPer1K,
-                        outputCostPer1K = activeModel.outputCostPer1K,
-                        temperature = activeModel.temperature,
-                        topP = activeModel.topP,
-                        isActive = activeModel.isActive,
-                        isDefault = activeModel.isDefault,
-                        description = activeModel.description,
-                        capabilities = activeModel.capabilities
-                    )
-                    _uiState.update { it.copy(currentModel = modelConfig) }
+                    modelConfigRepository.setActiveModelConfig(activeModel.id)
+                    _uiState.update { it.copy(currentModel = activeModel) }
                     // Re-check API key status after setting the model
                     checkApiKey()
                 } else {
@@ -326,8 +273,7 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 // Set the active model configuration
-                secureStorage.saveActiveModelConfigId(model.id)
-                secureStorage.saveActiveProviderId(model.providerId)
+                modelConfigRepository.setActiveModelConfig(model.id)
 
                 _uiState.update {
                     it.copy(

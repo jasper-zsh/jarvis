@@ -21,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LLMProviderEntity::class,
         ModelConfigEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(DatabaseConverters::class)
@@ -95,6 +95,14 @@ abstract class JarvisDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 2 to 3 - Adding encryptedApiKey to providers
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Add encryptedApiKey column to llm_providers table
+                database.execSQL("ALTER TABLE `llm_providers` ADD COLUMN `encryptedApiKey` TEXT")
+            }
+        }
+
         fun getDatabase(context: Context): JarvisDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -102,7 +110,7 @@ abstract class JarvisDatabase : RoomDatabase() {
                     JarvisDatabase::class.java,
                     "jarvis_database"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

@@ -13,8 +13,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ProviderConfigViewModel @Inject constructor(
-    private val providerRepository: ProviderRepository,
-    private val secureStorage: pro.sihao.jarvis.data.storage.SecureStorage
+    private val providerRepository: ProviderRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProviderConfigUiState())
@@ -31,8 +30,8 @@ class ProviderConfigViewModel @Inject constructor(
                 try {
                     val provider = providerRepository.getProviderById(providerId)
                     if (provider != null) {
-                        // Try to get API key from secure storage
-                        val apiKey = secureStorage.getApiKeyForProvider(provider.id)
+                        // Try to get API key from repository
+                        val apiKey = providerRepository.getApiKeyForProvider(provider.id)
 
                         _uiState.value = ProviderConfigUiState(
                             isLoading = false,
@@ -148,15 +147,16 @@ class ProviderConfigViewModel @Inject constructor(
 
                 val isNewProvider = _uiState.value.providerId == null
 
-                if (isNewProvider) {
+                val providerId = if (isNewProvider) {
                     providerRepository.insertProvider(provider)
                 } else {
                     providerRepository.updateProvider(provider)
+                    provider.id
                 }
 
-                // Save API key to secure storage (for both new and existing providers)
+                // Save API key to database (for both new and existing providers)
                 if (_uiState.value.apiKey.isNotBlank()) {
-                    secureStorage.saveApiKeyForProvider(provider.id, _uiState.value.apiKey)
+                    providerRepository.saveApiKeyForProvider(providerId, _uiState.value.apiKey)
                 }
 
                 _uiState.value = _uiState.value.copy(

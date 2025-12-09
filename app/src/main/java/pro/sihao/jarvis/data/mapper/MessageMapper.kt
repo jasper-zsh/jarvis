@@ -1,6 +1,7 @@
 package pro.sihao.jarvis.data.mapper
 
 import pro.sihao.jarvis.data.database.entity.MessageEntity
+import pro.sihao.jarvis.domain.model.ContentType
 import pro.sihao.jarvis.domain.model.Message
 import java.util.Date
 
@@ -12,7 +13,16 @@ object MessageMapper {
             timestamp = Date(entity.timestamp),
             isFromUser = entity.isFromUser,
             isLoading = entity.isLoading,
-            errorMessage = entity.errorMessage
+            errorMessage = entity.errorMessage,
+            contentType = try {
+                ContentType.valueOf(entity.contentType)
+            } catch (e: IllegalArgumentException) {
+                ContentType.TEXT // Fallback for old records
+            },
+            mediaUrl = entity.mediaUrl,
+            duration = entity.duration,
+            thumbnailUrl = entity.thumbnailUrl,
+            mediaSize = entity.mediaSize
         )
     }
 
@@ -23,7 +33,12 @@ object MessageMapper {
             timestamp = domain.timestamp.time,
             isFromUser = domain.isFromUser,
             isLoading = domain.isLoading,
-            errorMessage = domain.errorMessage
+            errorMessage = domain.errorMessage,
+            contentType = domain.contentType.name,
+            mediaUrl = domain.mediaUrl,
+            duration = domain.duration,
+            thumbnailUrl = domain.thumbnailUrl,
+            mediaSize = domain.mediaSize
         )
     }
 

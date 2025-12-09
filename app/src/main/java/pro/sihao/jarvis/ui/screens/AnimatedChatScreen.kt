@@ -154,8 +154,16 @@ fun AnimatedChatScreen(
             AnimatedMessageInput(
                 message = uiState.inputMessage,
                 isLoading = uiState.isLoading,
+                isRecording = uiState.isRecording,
+                recordingDuration = uiState.recordingDuration,
                 onMessageChange = viewModel::onMessageChanged,
-                onSendClick = viewModel::sendMessage
+                onSendClick = viewModel::sendMessage,
+                onVoiceRecordStart = viewModel::startVoiceRecording,
+                onVoiceRecordStop = viewModel::stopVoiceRecording,
+                onVoiceRecordCancel = viewModel::cancelVoiceRecording,
+                onCameraClick = viewModel::capturePhoto,
+                onGalleryClick = viewModel::selectPhotoFromGallery,
+                permissionStatus = uiState.permissionStatus
             )
         }
     }
@@ -319,8 +327,16 @@ private fun AnimatedApiSetupPrompt(
 private fun AnimatedMessageInput(
     message: String,
     isLoading: Boolean,
+    isRecording: Boolean,
+    recordingDuration: Long,
     onMessageChange: (String) -> Unit,
-    onSendClick: () -> Unit
+    onSendClick: () -> Unit,
+    onVoiceRecordStart: () -> Unit,
+    onVoiceRecordStop: () -> Unit,
+    onVoiceRecordCancel: () -> Unit,
+    onCameraClick: () -> Unit,
+    onGalleryClick: () -> Unit,
+    permissionStatus: pro.sihao.jarvis.permission.PermissionManager.MediaPermissionsSummary
 ) {
     AnimatedVisibility(
         visible = true,
@@ -333,8 +349,17 @@ private fun AnimatedMessageInput(
         MessageInput(
             message = message,
             isLoading = isLoading,
+            isRecording = isRecording,
+            recordingDuration = recordingDuration,
             onMessageChange = onMessageChange,
-            onSendClick = onSendClick
+            onSendClick = onSendClick,
+            permissionStatus = pro.sihao.jarvis.permission.PermissionManager.MediaPermissionsSummary(
+                voiceRecordingStatus = pro.sihao.jarvis.permission.PermissionManager.PermissionStatus.NOT_REQUIRED,
+                cameraStatus = pro.sihao.jarvis.permission.PermissionManager.PermissionStatus.NOT_REQUIRED,
+                galleryStatus = pro.sihao.jarvis.permission.PermissionManager.PermissionStatus.NOT_REQUIRED,
+                hasMicrophoneHardware = false,
+                hasCameraHardware = false
+            )
         )
     }
 }

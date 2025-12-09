@@ -1,5 +1,6 @@
 package pro.sihao.jarvis.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,10 +13,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.os.Build
+import pro.sihao.jarvis.permission.PermissionManager
 import pro.sihao.jarvis.domain.model.Message
 import pro.sihao.jarvis.ui.components.*
 import pro.sihao.jarvis.ui.viewmodel.ChatViewModel
@@ -32,6 +39,52 @@ fun ChatScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { viewModel.refreshPermissions() }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { viewModel.refreshPermissions() }
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { viewModel.refreshPermissions() }
+
+    val voicePermissions = arrayOf(Manifest.permission.RECORD_AUDIO)
+    val cameraPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(Manifest.permission.CAMERA)
+    } else {
+        arrayOf(Manifest.permission.CAMERA)
+    }
+    val galleryPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+    } else {
+        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+    val handleVoiceStart: () -> Unit = {
+        if (uiState.permissionStatus.voiceRecordingStatus == PermissionManager.PermissionStatus.GRANTED) {
+            viewModel.startVoiceRecording()
+        } else {
+            voicePermissionLauncher.launch(voicePermissions)
+        }
+    }
+
+    val handleCameraClick: () -> Unit = {
+        if (uiState.permissionStatus.cameraStatus == PermissionManager.PermissionStatus.GRANTED) {
+            viewModel.capturePhoto()
+        } else {
+            cameraPermissionLauncher.launch(cameraPermissions)
+        }
+    }
+
+    val handleGalleryClick: () -> Unit = {
+        if (uiState.permissionStatus.galleryStatus == PermissionManager.PermissionStatus.GRANTED) {
+            viewModel.selectPhotoFromGallery()
+        } else {
+            galleryPermissionLauncher.launch(galleryPermissions)
+        }
+    }
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -82,8 +135,26 @@ fun ChatScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(uiState.messages) { message ->
-                        MessageBubble(message = message)
+                    val displayMessages = uiState.streamingContent?.let { partial ->
+                        uiState.messages + Message(
+                            content = partial,
+                            timestamp = Date(),
+                            isFromUser = false,
+                            isLoading = true
+                        )
+                    } ?: uiState.messages
+
+                    items(displayMessages) { message ->
+                        MessageBubble(
+                            message = message,
+                            onPhotoClick = { photoUrl ->
+                                // Handle photo tap for full-screen viewing
+                                // This could be implemented with a modal or navigation
+                            },
+                            onVoicePlay = viewModel::playVoiceMessage,
+                            onVoicePause = viewModel::pauseVoicePlayback,
+                            onCancelLoading = viewModel::cancelPendingResponse
+                        )
                     }
                 }
             }
@@ -135,9 +206,54 @@ fun ChatScreen(
             MessageInput(
                 message = uiState.inputMessage,
                 isLoading = uiState.isLoading,
+                isRecording = uiState.isRecording,
+                recordingDuration = uiState.recordingDuration,
                 onMessageChange = viewModel::onMessageChanged,
-                onSendClick = viewModel::sendMessage
+                onSendClick = viewModel::sendMessage,
+                onVoiceRecordStart = handleVoiceStart,
+                onVoiceRecordStop = viewModel::stopVoiceRecording,
+                onVoiceRecordCancel = viewModel::cancelVoiceRecording,
+                onCameraClick = handleCameraClick,
+                onGalleryClick = handleGalleryClick,
+                permissionStatus = uiState.permissionStatus
             )
         }
+    }
+
+    if (uiState.showPhotoPreview && uiState.pendingPhoto != null) {
+        AlertDialog(
+            onDismissRequest = viewModel::cancelPendingPhoto,
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmPendingPhoto) {
+                    Text("Send photo")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelPendingPhoto) {
+                    Text("Cancel")
+                }
+            },
+            text = {
+                uiState.pendingPhoto?.let { bitmap ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Preview",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Photo preview",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(240.dp)
+                        )
+                    }
+                }
+            }
+        )
     }
 }

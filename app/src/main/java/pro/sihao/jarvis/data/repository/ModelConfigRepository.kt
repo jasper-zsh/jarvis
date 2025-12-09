@@ -77,6 +77,7 @@ class ModelConfigRepository @Inject constructor(
     suspend fun setActiveAndDefaultModel(providerId: Long, modelConfigId: Long) {
         setModelConfigActiveStatus(modelConfigId, true)
         setDefaultModelForProvider(providerId, modelConfigId)
+        setActiveModelConfig(modelConfigId)
     }
 
     suspend fun getModelConfigCountByProvider(providerId: Long): Int =
@@ -88,48 +89,14 @@ class ModelConfigRepository @Inject constructor(
     // Convenience methods for model configuration
     fun getActiveModelsForProvider(providerId: Long): Flow<List<ModelConfiguration>> {
         return getActiveModelConfigsByProvider(providerId).map { configs ->
-            configs.map { config ->
-                ModelConfiguration(
-                    id = config.id,
-                    providerId = config.providerId,
-                    modelName = config.modelName,
-                    displayName = config.displayName,
-                    maxTokens = config.maxTokens,
-                    contextWindow = config.contextWindow,
-                    inputCostPer1K = config.inputCostPer1K,
-                    outputCostPer1K = config.outputCostPer1K,
-                    temperature = config.temperature,
-                    topP = config.topP,
-                    isActive = config.isActive,
-                    isDefault = config.isDefault,
-                    description = config.description,
-                    capabilities = config.capabilities
-                )
-            }
+            configs.map { config -> config.toModelConfiguration() }
         }
     }
 
     suspend fun getDefaultModelForProvider(providerId: Long): ModelConfiguration? {
         return try {
             val defaultEntity = modelConfigDao.getDefaultModelForProvider(providerId)
-            defaultEntity?.let { entity ->
-                ModelConfiguration(
-                    id = entity.id,
-                    providerId = entity.providerId,
-                    modelName = entity.modelName,
-                    displayName = entity.displayName,
-                    maxTokens = entity.maxTokens,
-                    contextWindow = entity.contextWindow,
-                    inputCostPer1K = entity.inputCostPer1K,
-                    outputCostPer1K = entity.outputCostPer1K,
-                    temperature = entity.temperature,
-                    topP = entity.topP,
-                    isActive = entity.isActive,
-                    isDefault = entity.isDefault,
-                    description = entity.description,
-                    capabilities = entity.capabilities
-                )
-            }
+            defaultEntity?.toModelConfiguration()
         } catch (e: Exception) {
             null
         }
@@ -138,24 +105,15 @@ class ModelConfigRepository @Inject constructor(
     suspend fun getFirstActiveModel(): ModelConfiguration? {
         return try {
             val firstActiveEntity = modelConfigDao.getFirstActiveModel()
-            firstActiveEntity?.let { entity ->
-                ModelConfiguration(
-                    id = entity.id,
-                    providerId = entity.providerId,
-                    modelName = entity.modelName,
-                    displayName = entity.displayName,
-                    maxTokens = entity.maxTokens,
-                    contextWindow = entity.contextWindow,
-                    inputCostPer1K = entity.inputCostPer1K,
-                    outputCostPer1K = entity.outputCostPer1K,
-                    temperature = entity.temperature,
-                    topP = entity.topP,
-                    isActive = entity.isActive,
-                    isDefault = entity.isDefault,
-                    description = entity.description,
-                    capabilities = entity.capabilities
-                )
-            }
+            firstActiveEntity?.toModelConfiguration()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun getFirstActiveModelForProvider(providerId: Long): ModelConfiguration? {
+        return try {
+            getActiveModelConfigsByProvider(providerId).first().firstOrNull()?.toModelConfiguration()
         } catch (e: Exception) {
             null
         }
@@ -206,6 +164,25 @@ class ModelConfigRepository @Inject constructor(
 
     suspend fun hasActiveModelConfig(): Boolean {
         return getActiveModelConfigId() != -1L
+    }
+
+    private fun ModelConfigEntity.toModelConfiguration(): ModelConfiguration {
+        return ModelConfiguration(
+            id = id,
+            providerId = providerId,
+            modelName = modelName,
+            displayName = displayName,
+            maxTokens = maxTokens,
+            contextWindow = contextWindow,
+            inputCostPer1K = inputCostPer1K,
+            outputCostPer1K = outputCostPer1K,
+            temperature = temperature,
+            topP = topP,
+            isActive = isActive,
+            isDefault = isDefault,
+            description = description,
+            capabilities = capabilities
+        )
     }
 }
 

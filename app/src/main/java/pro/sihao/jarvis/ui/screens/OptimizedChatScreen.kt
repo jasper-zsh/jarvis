@@ -18,6 +18,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import pro.sihao.jarvis.domain.model.Message
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.os.Build
+import pro.sihao.jarvis.permission.PermissionManager
 import pro.sihao.jarvis.ui.components.*
 import pro.sihao.jarvis.ui.viewmodel.ChatViewModel
 import java.text.SimpleDateFormat
@@ -32,6 +37,52 @@ fun OptimizedChatScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { viewModel.refreshPermissions() }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { viewModel.refreshPermissions() }
+    val galleryPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { viewModel.refreshPermissions() }
+
+    val voicePermissions = arrayOf(Manifest.permission.RECORD_AUDIO)
+    val cameraPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(Manifest.permission.CAMERA)
+    } else {
+        arrayOf(Manifest.permission.CAMERA)
+    }
+    val galleryPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+    } else {
+        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+    val handleVoiceStart: () -> Unit = {
+        if (uiState.permissionStatus.voiceRecordingStatus == PermissionManager.PermissionStatus.GRANTED) {
+            viewModel.startVoiceRecording()
+        } else {
+            voicePermissionLauncher.launch(voicePermissions)
+        }
+    }
+
+    val handleCameraClick: () -> Unit = {
+        if (uiState.permissionStatus.cameraStatus == PermissionManager.PermissionStatus.GRANTED) {
+            viewModel.capturePhoto()
+        } else {
+            cameraPermissionLauncher.launch(cameraPermissions)
+        }
+    }
+
+    val handleGalleryClick: () -> Unit = {
+        if (uiState.permissionStatus.galleryStatus == PermissionManager.PermissionStatus.GRANTED) {
+            viewModel.selectPhotoFromGallery()
+        } else {
+            galleryPermissionLauncher.launch(galleryPermissions)
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
 
     // State for lazy loading
@@ -202,8 +253,16 @@ fun OptimizedChatScreen(
             MessageInput(
                 message = uiState.inputMessage,
                 isLoading = uiState.isLoading,
+                isRecording = uiState.isRecording,
+                recordingDuration = uiState.recordingDuration,
                 onMessageChange = viewModel::onMessageChanged,
-                onSendClick = viewModel::sendMessage
+                onSendClick = viewModel::sendMessage,
+                onVoiceRecordStart = handleVoiceStart,
+                onVoiceRecordStop = viewModel::stopVoiceRecording,
+                onVoiceRecordCancel = viewModel::cancelVoiceRecording,
+                onCameraClick = handleCameraClick,
+                onGalleryClick = handleGalleryClick,
+                permissionStatus = uiState.permissionStatus
             )
         }
     }

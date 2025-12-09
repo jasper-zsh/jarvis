@@ -10,5 +10,16 @@ data class OpenAIRequest(
 
 data class OpenAIMessage(
     val role: String,
-    val content: String
+    val content: List<ContentPart>
+)
+
+data class ContentPart(
+    val type: String,
+    val text: String? = null,
+    val input_audio: InputAudioPayload? = null
+)
+
+data class InputAudioPayload(
+    val data: String,
+    val format: String
 )

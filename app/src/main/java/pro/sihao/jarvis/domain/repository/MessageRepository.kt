@@ -9,6 +9,7 @@ interface MessageRepository {
     suspend fun getMessagesPaginated(limit: Int, offset: Int): List<Message>
     suspend fun insertMessage(message: Message): Long
     suspend fun insertMessages(messages: List<Message>)
+    suspend fun upsertMessage(message: Message): Long
     suspend fun deleteMessage(message: Message)
     suspend fun deleteLoadingMessages()
     suspend fun clearAllMessages()

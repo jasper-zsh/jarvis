@@ -82,6 +82,9 @@ dependencies {
     // Security for API key storage
     implementation(libs.security.crypto)
 
+    // Image loading with Coil
+    implementation("io.coil-kt:coil-compose:2.6.0")
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockito.kotlin)

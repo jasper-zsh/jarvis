@@ -37,6 +37,11 @@ class MessageRepositoryImpl @Inject constructor(
         return database.messageDao().insertMessage(entity)
     }
 
+    override suspend fun upsertMessage(message: Message): Long {
+        val entity = MessageMapper.toEntity(message)
+        return database.messageDao().insertMessage(entity)
+    }
+
     override suspend fun insertMessages(messages: List<Message>) {
         val entities = MessageMapper.toEntityList(messages)
         database.messageDao().insertMessages(entities)

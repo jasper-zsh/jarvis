@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -39,6 +40,7 @@ fun ChatScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+    var showClearDialog by remember { mutableStateOf(false) }
 
     val voicePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -115,6 +117,9 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showClearDialog = true }) {
+                        Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear chat")
+                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
                     }
@@ -129,32 +134,54 @@ fun ChatScreen(
         ) {
             // Messages list
             Box(modifier = Modifier.weight(1f)) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    state = listState,
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val displayMessages = uiState.streamingContent?.let { partial ->
-                        uiState.messages + Message(
-                            content = partial,
-                            timestamp = Date(),
-                            isFromUser = false,
-                            isLoading = true
-                        )
-                    } ?: uiState.messages
+                val displayMessages = uiState.streamingContent?.let { partial ->
+                    uiState.messages + Message(
+                        content = partial,
+                        timestamp = Date(),
+                        isFromUser = false,
+                        isLoading = true
+                    )
+                } ?: uiState.messages
 
-                    items(displayMessages) { message ->
-                        MessageBubble(
-                            message = message,
-                            onPhotoClick = { photoUrl ->
-                                // Handle photo tap for full-screen viewing
-                                // This could be implemented with a modal or navigation
-                            },
-                            onVoicePlay = viewModel::playVoiceMessage,
-                            onVoicePause = viewModel::pauseVoicePlayback,
-                            onCancelLoading = viewModel::cancelPendingResponse
+                if (displayMessages.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Start a new conversation",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Your messages and media will appear here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        state = listState,
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+
+                        items(displayMessages) { message ->
+                            MessageBubble(
+                                message = message,
+                                onPhotoClick = { _ ->
+                                    // Handle photo tap for full-screen viewing
+                                },
+                                onVoicePlay = viewModel::playVoiceMessage,
+                                onVoicePause = viewModel::pauseVoicePlayback,
+                                onCancelLoading = viewModel::cancelPendingResponse
+                            )
+                        }
                     }
                 }
             }
@@ -254,6 +281,29 @@ fun ChatScreen(
                     }
                 }
             }
+        )
+    }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearDialog = false
+                        viewModel.clearConversation()
+                    }
+                ) {
+                    Text("Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            title = { Text("Clear conversation?") },
+            text = { Text("This will delete all messages and media in this chat.") },
         )
     }
 }

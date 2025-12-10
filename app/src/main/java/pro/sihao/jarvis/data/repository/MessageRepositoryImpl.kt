@@ -61,6 +61,11 @@ class MessageRepositoryImpl @Inject constructor(
         database.messageDao().clearAllMessages()
     }
 
+    override suspend fun clearConversation(conversationId: Long?) {
+        // Currently single-conversation; reuse clearAllMessages
+        database.messageDao().clearConversation()
+    }
+
     override suspend fun getMessageCount(): Int {
         return database.messageDao().getMessageCount()
     }

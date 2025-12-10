@@ -13,5 +13,6 @@ interface MessageRepository {
     suspend fun deleteMessage(message: Message)
     suspend fun deleteLoadingMessages()
     suspend fun clearAllMessages()
+    suspend fun clearConversation(conversationId: Long? = null)
     suspend fun getMessageCount(): Int
 }

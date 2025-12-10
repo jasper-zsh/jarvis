@@ -118,6 +118,16 @@ class MediaStorageManager(private val context: Context) {
         return thumbnailFile?.delete() ?: false
     }
 
+    fun deleteFile(path: String?): Boolean {
+        if (path.isNullOrBlank()) return false
+        return try {
+            val file = File(path)
+            file.delete()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun getMediaSize(contentType: ContentType, fileName: String): Long? {
         val mediaFile = getMediaFile(contentType, fileName)
         return mediaFile?.length()

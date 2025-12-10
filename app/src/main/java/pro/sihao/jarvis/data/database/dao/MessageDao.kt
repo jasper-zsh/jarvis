@@ -33,6 +33,9 @@ interface MessageDao {
     @Query("DELETE FROM messages")
     suspend fun clearAllMessages()
 
+    @Query("DELETE FROM messages")
+    suspend fun clearConversation()
+
     @Query("SELECT COUNT(*) FROM messages")
     suspend fun getMessageCount(): Int
 }

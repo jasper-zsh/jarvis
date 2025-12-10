@@ -239,6 +239,44 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(errorMessage = null) }
     }
 
+    fun clearConversation() {
+        viewModelScope.launch {
+            try {
+                // Cancel active streaming or uploads for current conversation
+                llmService.cancelActiveRequest()
+                voiceRecorder.cancelRecording()
+                voicePlayer.stop()
+                llmService.setPartialListener(null)
+
+                // Delete messages
+                messageRepository.clearConversation()
+
+                // Delete associated media files best-effort
+                _uiState.value.messages.forEach { message ->
+                    if (message.mediaUrl != null) {
+                        mediaStorageManager.deleteFile(message.mediaUrl)
+                    }
+                    if (message.thumbnailUrl != null) {
+                        mediaStorageManager.deleteFile(message.thumbnailUrl)
+                    }
+                }
+
+                // Reset UI state
+                _uiState.update {
+                    it.copy(
+                        messages = emptyList(),
+                        inputMessage = "",
+                        streamingContent = null,
+                        isLoading = false,
+                        errorMessage = null
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Failed to clear conversation: ${e.message}") }
+            }
+        }
+    }
+
     fun navigateToSettings() {
         _uiState.update { it.copy(navigateToSettings = true) }
     }

@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging.interceptor)
+    implementation(libs.dashscope)
 
     // Dependency Injection - Hilt
     implementation(libs.hilt.android)

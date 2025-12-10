@@ -19,6 +19,7 @@ import pro.sihao.jarvis.media.VoicePlayer
 import pro.sihao.jarvis.media.PhotoCaptureManager
 import pro.sihao.jarvis.permission.PermissionManager
 import pro.sihao.jarvis.data.storage.MediaStorageManager
+import pro.sihao.jarvis.ui.model.InputMode
 import java.io.File
 import java.util.Date
 import javax.inject.Inject
@@ -131,6 +132,21 @@ class ChatViewModel @Inject constructor(
 
     fun onMessageChanged(message: String) {
         _uiState.update { it.copy(inputMessage = message) }
+    }
+
+    fun setInputMode(mode: InputMode) {
+        _uiState.update { it.copy(inputMode = mode) }
+    }
+
+    fun toggleInputMode() {
+        _uiState.update { state ->
+            val nextMode = if (state.inputMode == InputMode.TEXT) InputMode.VOICE else InputMode.TEXT
+            state.copy(inputMode = nextMode)
+        }
+    }
+
+    fun appendEmoji(emoji: String) {
+        _uiState.update { it.copy(inputMessage = it.inputMessage + emoji) }
     }
 
     fun sendMessage() {
@@ -750,6 +766,7 @@ data class ChatUiState(
     val currentModel: ModelConfiguration? = null,
     val showModelSwitcher: Boolean = false,
     val modelSwitchingError: String? = null,
+    val inputMode: InputMode = InputMode.TEXT,
     // Media recording state
     val isRecording: Boolean = false,
     val recordingDuration: Long = 0,

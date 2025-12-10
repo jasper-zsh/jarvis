@@ -232,11 +232,14 @@ fun ChatScreen(
             // Input area
             MessageInput(
                 message = uiState.inputMessage,
+                inputMode = uiState.inputMode,
                 isLoading = uiState.isLoading,
                 isRecording = uiState.isRecording,
                 recordingDuration = uiState.recordingDuration,
                 onMessageChange = viewModel::onMessageChanged,
                 onSendClick = viewModel::sendMessage,
+                onInputModeChange = viewModel::setInputMode,
+                onEmojiSelected = viewModel::appendEmoji,
                 onVoiceRecordStart = handleVoiceStart,
                 onVoiceRecordStop = viewModel::stopVoiceRecording,
                 onVoiceRecordCancel = viewModel::cancelVoiceRecording,

@@ -8,10 +8,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import pro.sihao.jarvis.domain.service.LLMService
-import pro.sihao.jarvis.domain.model.Message
+import pro.sihao.jarvis.domain.service.LLMStreamEvent
 import pro.sihao.jarvis.data.repository.ModelConfiguration
 import pro.sihao.jarvis.data.repository.ProviderRepository
-import java.util.*
 import javax.inject.Inject
 
 @HiltViewModel
@@ -58,37 +57,43 @@ class ModelTestViewModel @Inject constructor(
                     return@launch
                 }
 
-                // Create a simple test conversation
-                val testMessage = Message(
-                    content = currentState.testPrompt,
-                    isFromUser = true,
-                    timestamp = Date()
-                )
-
                 llmService.sendMessage(
                     message = currentState.testPrompt,
                     conversationHistory = emptyList(),
                     apiKey = apiKey
-                ).collect { result ->
-                    val endTime = System.currentTimeMillis()
-                    val responseTime = (endTime - startTime).toInt()
-
-                    when {
-                        result.isSuccess -> {
-                            val response = result.getOrNull()
-                            _uiState.value = currentState.copy(
-                                isLoading = false,
-                                response = response,
-                                error = null,
-                                responseTime = responseTime,
-                                tokensUsed = estimateTokens(currentState.testPrompt, response)
+                ).collect { event ->
+                    when (event) {
+                        is LLMStreamEvent.Partial -> {
+                            _uiState.value = _uiState.value.copy(
+                                response = event.content,
+                                error = null
                             )
                         }
 
-                        result.isFailure -> {
-                            _uiState.value = currentState.copy(
+                        is LLMStreamEvent.Complete -> {
+                            val endTime = System.currentTimeMillis()
+                            val responseTime = (endTime - startTime).toInt()
+                            _uiState.value = _uiState.value.copy(
                                 isLoading = false,
-                                error = result.exceptionOrNull()?.message ?: "Unknown error occurred",
+                                response = event.content,
+                                error = null,
+                                responseTime = responseTime,
+                                tokensUsed = estimateTokens(currentState.testPrompt, event.content)
+                            )
+                        }
+
+                        is LLMStreamEvent.Error -> {
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                error = event.throwable.message ?: "Unknown error occurred",
+                                response = null
+                            )
+                        }
+
+                        is LLMStreamEvent.Canceled -> {
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                error = "Test canceled",
                                 response = null
                             )
                         }

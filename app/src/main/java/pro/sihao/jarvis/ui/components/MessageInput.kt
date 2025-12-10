@@ -61,10 +61,12 @@ fun MessageInput(
     message: String,
     inputMode: InputMode,
     isLoading: Boolean,
+    showCancel: Boolean,
     isRecording: Boolean,
     recordingDuration: Long,
     onMessageChange: (String) -> Unit,
     onSendClick: () -> Unit,
+    onCancelStreaming: () -> Unit = {},
     onInputModeChange: (InputMode) -> Unit,
     onEmojiSelected: (String) -> Unit,
     onVoiceRecordStart: () -> Unit = {},
@@ -91,6 +93,27 @@ fun MessageInput(
         ) {
             if (isRecording) {
                 RecordingStatus(recordingDuration = recordingDuration)
+            }
+
+            if (showCancel) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Assistant is responding...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = onCancelStreaming,
+                        enabled = isLoading
+                    ) {
+                        Text("Cancel")
+                    }
+                }
             }
 
             Row(

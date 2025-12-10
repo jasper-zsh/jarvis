@@ -5,10 +5,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,12 +25,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
 import android.os.Build
 import pro.sihao.jarvis.permission.PermissionManager
-import pro.sihao.jarvis.domain.model.Message
 import pro.sihao.jarvis.ui.components.*
 import pro.sihao.jarvis.ui.viewmodel.ChatViewModel
-import java.text.SimpleDateFormat
-import java.util.*
-import androidx.compose.ui.platform.LocalConfiguration
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +38,10 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     var showClearDialog by remember { mutableStateOf(false) }
+    val bottomBringRequester = remember { BringIntoViewRequester() }
+    val displayMessages = remember(uiState.messages, uiState.streamingMessage) {
+        uiState.streamingMessage?.let { uiState.messages + it } ?: uiState.messages
+    }
 
     val voicePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -88,9 +89,12 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(uiState.messages.size) {
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+    LaunchedEffect(displayMessages.size, uiState.streamingMessage?.content) {
+        if (displayMessages.isNotEmpty()) {
+            val bottomIndex = displayMessages.size // sentinel item sits after messages
+            listState.animateScrollToItem(bottomIndex)
+            // Ensure the bottom sentinel is brought fully into view to keep the latest bubble fully visible.
+            bottomBringRequester.bringIntoView()
         }
     }
 
@@ -134,15 +138,6 @@ fun ChatScreen(
         ) {
             // Messages list
             Box(modifier = Modifier.weight(1f)) {
-                val displayMessages = uiState.streamingContent?.let { partial ->
-                    uiState.messages + Message(
-                        content = partial,
-                        timestamp = Date(),
-                        isFromUser = false,
-                        isLoading = true
-                    )
-                } ?: uiState.messages
-
                 if (displayMessages.isEmpty()) {
                     Column(
                         modifier = Modifier
@@ -174,12 +169,20 @@ fun ChatScreen(
                         items(displayMessages) { message ->
                             MessageBubble(
                                 message = message,
+                                modifier = Modifier,
                                 onPhotoClick = { _ ->
                                     // Handle photo tap for full-screen viewing
                                 },
                                 onVoicePlay = viewModel::playVoiceMessage,
-                                onVoicePause = viewModel::pauseVoicePlayback,
-                                onCancelLoading = viewModel::cancelPendingResponse
+                                onVoicePause = viewModel::pauseVoicePlayback
+                            )
+                        }
+
+                        item {
+                            Spacer(
+                                modifier = Modifier
+                                    .height(96.dp)
+                                    .bringIntoViewRequester(bottomBringRequester)
                             )
                         }
                     }
@@ -238,6 +241,8 @@ fun ChatScreen(
                 recordingDuration = uiState.recordingDuration,
                 onMessageChange = viewModel::onMessageChanged,
                 onSendClick = viewModel::sendMessage,
+                onCancelStreaming = viewModel::cancelPendingResponse,
+                showCancel = uiState.isLoading && uiState.streamingMessage != null,
                 onInputModeChange = viewModel::setInputMode,
                 onEmojiSelected = viewModel::appendEmoji,
                 onVoiceRecordStart = handleVoiceStart,

@@ -14,6 +14,7 @@ import pro.sihao.jarvis.domain.model.ContentType
 import pro.sihao.jarvis.domain.model.Message
 import pro.sihao.jarvis.domain.repository.MessageRepository
 import pro.sihao.jarvis.domain.service.LLMService
+import pro.sihao.jarvis.domain.service.LLMStreamEvent
 import pro.sihao.jarvis.media.VoiceRecorder
 import pro.sihao.jarvis.media.VoicePlayer
 import pro.sihao.jarvis.media.PhotoCaptureManager
@@ -173,27 +174,30 @@ class ChatViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            val streamingTimestamp = Date()
             try {
-                llmService.setPartialListener { partial ->
-                    _uiState.update { it.copy(streamingContent = partial) }
-                }
-
                 // Create user message
                 val userMessage = Message(
                     content = currentMessage,
-                    timestamp = Date(),
+                    timestamp = streamingTimestamp,
                     isFromUser = true
                 )
 
                 // Insert user message
                 messageRepository.insertMessage(userMessage)
 
-                // Clear input and show loading
+                // Clear input and show loading with a streaming placeholder
                 _uiState.update {
                     it.copy(
                         inputMessage = "",
                         isLoading = true,
-                        errorMessage = null
+                        errorMessage = null,
+                        streamingMessage = Message(
+                            content = "",
+                            timestamp = streamingTimestamp,
+                            isFromUser = false,
+                            isLoading = true
+                        )
                     )
                 }
 
@@ -201,52 +205,55 @@ class ChatViewModel @Inject constructor(
                 val messages = _uiState.value.messages + userMessage
 
                 // Send to LLM service
-                try {
-                    llmService.sendMessage(currentMessage, messages, null as String?).collect { result ->
-                        result.fold(
-                            onSuccess = { aiResponse ->
-                                // Remove loading message and add actual AI response
-                                messageRepository.deleteLoadingMessages()
-
-                                val aiMessage = Message(
-                                    content = aiResponse,
-                                    timestamp = Date(),
-                                    isFromUser = false
+                llmService.sendMessage(currentMessage, messages, null as String?).collect { event ->
+                    when (event) {
+                        is LLMStreamEvent.Partial -> {
+                            _uiState.update { state ->
+                                val placeholder = state.streamingMessage ?: Message(
+                                    content = "",
+                                    timestamp = streamingTimestamp,
+                                    isFromUser = false,
+                                    isLoading = true
                                 )
-                                messageRepository.insertMessage(aiMessage)
-                                _uiState.update { it.copy(isLoading = false, streamingContent = null) }
-                            },
-                            onFailure = { error ->
-                                _uiState.update {
-                                    it.copy(
-                                        isLoading = false,
-                                        streamingContent = null,
-                                        errorMessage = "Failed to get response: ${error.message ?: error::class.java.simpleName}"
-                                    )
-                                }
+                                state.copy(streamingMessage = placeholder.copy(content = event.content))
                             }
-                        )
-                    }
-                } catch (e: Exception) {
-                    // Remove loading message on error
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            streamingContent = null,
-                            errorMessage = "Error sending message: ${e.message}"
-                        )
+                        }
+
+                        is LLMStreamEvent.Complete -> {
+                            messageRepository.deleteLoadingMessages()
+
+                            val aiMessage = Message(
+                                content = event.content,
+                                timestamp = Date(),
+                                isFromUser = false
+                            )
+                            messageRepository.insertMessage(aiMessage)
+                            _uiState.update { it.copy(isLoading = false, streamingMessage = null) }
+                        }
+
+                        is LLMStreamEvent.Error -> {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    streamingMessage = null,
+                                    errorMessage = "Failed to get response: ${event.throwable.message ?: event.throwable::class.java.simpleName}"
+                                )
+                            }
+                        }
+
+                        is LLMStreamEvent.Canceled -> {
+                            _uiState.update { it.copy(isLoading = false, streamingMessage = null) }
+                        }
                     }
                 }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        streamingContent = null,
+                        streamingMessage = null,
                         errorMessage = "Unexpected error sending message: ${e.message}"
                     )
                 }
-            } finally {
-                llmService.setPartialListener(null)
             }
         }
     }
@@ -262,7 +269,6 @@ class ChatViewModel @Inject constructor(
                 llmService.cancelActiveRequest()
                 voiceRecorder.cancelRecording()
                 voicePlayer.stop()
-                llmService.setPartialListener(null)
 
                 // Delete messages
                 messageRepository.clearConversation()
@@ -282,7 +288,7 @@ class ChatViewModel @Inject constructor(
                     it.copy(
                         messages = emptyList(),
                         inputMessage = "",
-                        streamingContent = null,
+                        streamingMessage = null,
                         isLoading = false,
                         errorMessage = null
                     )
@@ -359,8 +365,7 @@ class ChatViewModel @Inject constructor(
     fun cancelPendingResponse() {
         viewModelScope.launch {
             llmService.cancelActiveRequest()
-            _uiState.update { it.copy(isLoading = false, streamingContent = null, errorMessage = "Canceled") }
-            llmService.setPartialListener(null)
+            _uiState.update { it.copy(isLoading = false, streamingMessage = null, errorMessage = "Response canceled") }
         }
     }
 
@@ -570,57 +575,73 @@ class ChatViewModel @Inject constructor(
     }
 
     private suspend fun sendMediaMessageToLLM(mediaMessage: Message) {
+        val streamingTimestamp = Date()
         try {
-            llmService.setPartialListener { partial ->
-                _uiState.update { it.copy(streamingContent = partial) }
-            }
-
             // Get current conversation history
             val messages = _uiState.value.messages + mediaMessage
 
+            // Show streaming placeholder
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    streamingMessage = Message(
+                        content = "",
+                        timestamp = streamingTimestamp,
+                        isFromUser = false,
+                        isLoading = true
+                    ),
+                    errorMessage = null
+                )
+            }
+
             // Send to LLM service with media content
-            try {
-                llmService.sendMessage(mediaMessage.content, messages, mediaMessage).collect { result ->
-                    result.fold(
-                        onSuccess = { aiResponse ->
-                            val aiMessage = Message(
-                                content = aiResponse,
-                                timestamp = Date(),
-                                isFromUser = false
+            llmService.sendMessage(mediaMessage.content, messages, mediaMessage).collect { event ->
+                when (event) {
+                    is LLMStreamEvent.Partial -> {
+                        _uiState.update { state ->
+                            val placeholder = state.streamingMessage ?: Message(
+                                content = "",
+                                timestamp = streamingTimestamp,
+                                isFromUser = false,
+                                isLoading = true
                             )
-                            messageRepository.insertMessage(aiMessage)
-                            _uiState.update { it.copy(isLoading = false, streamingContent = null) }
-                        },
-                        onFailure = { error ->
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    streamingContent = null,
-                                    errorMessage = "Failed to get response: ${error.message ?: error::class.java.simpleName}"
-                                )
-                            }
+                            state.copy(streamingMessage = placeholder.copy(content = event.content))
                         }
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        streamingContent = null,
-                        errorMessage = "Error processing media message: ${e.message}"
-                    )
+                    }
+
+                    is LLMStreamEvent.Complete -> {
+                        val aiMessage = Message(
+                            content = event.content,
+                            timestamp = Date(),
+                            isFromUser = false
+                        )
+                        messageRepository.insertMessage(aiMessage)
+                        _uiState.update { it.copy(isLoading = false, streamingMessage = null) }
+                    }
+
+                    is LLMStreamEvent.Error -> {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                streamingMessage = null,
+                                errorMessage = "Failed to get response: ${event.throwable.message ?: event.throwable::class.java.simpleName}"
+                            )
+                        }
+                    }
+
+                    is LLMStreamEvent.Canceled -> {
+                        _uiState.update { it.copy(isLoading = false, streamingMessage = null) }
+                    }
                 }
             }
         } catch (e: Exception) {
             _uiState.update {
                 it.copy(
                     isLoading = false,
-                    streamingContent = null,
+                    streamingMessage = null,
                     errorMessage = "Error processing media message: ${e.message}"
                 )
             }
-        } finally {
-            llmService.setPartialListener(null)
         }
     }
 
@@ -756,7 +777,7 @@ data class ChatUiState(
     val messages: List<Message> = emptyList(),
     val inputMessage: String = "",
     val isLoading: Boolean = false,
-    val streamingContent: String? = null,
+    val streamingMessage: Message? = null,
     val errorMessage: String? = null,
     val hasApiKey: Boolean = false,
     val isConnected: Boolean = false,

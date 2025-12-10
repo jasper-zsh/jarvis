@@ -11,15 +11,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.clickable
 import pro.sihao.jarvis.domain.model.ContentType
 import pro.sihao.jarvis.domain.model.Message
 import java.text.SimpleDateFormat
@@ -31,15 +30,19 @@ fun MessageBubble(
     modifier: Modifier = Modifier,
     onPhotoClick: ((String) -> Unit)? = null,
     onVoicePlay: ((String) -> Unit)? = null,
-    onVoicePause: (() -> Unit)? = null,
-    onCancelLoading: (() -> Unit)? = null
+    onVoicePause: (() -> Unit)? = null
 ) {
-    // Streaming/loading placeholder
+    // Streaming text bubble shows partial content inline
+    if (message.isLoading && message.contentType == ContentType.TEXT && message.content.isNotBlank()) {
+        StreamingMessageBubble(message = message, modifier = modifier)
+        return
+    }
+
+    // Loading placeholder
     if (message.isLoading) {
         LoadingMessageBubble(
             isFromUser = message.isFromUser,
-            modifier = modifier,
-            onCancel = onCancelLoading
+            modifier = modifier
         )
         return
     }
@@ -111,8 +114,7 @@ fun MessageBubble(
 @Composable
 private fun LoadingMessageBubble(
     isFromUser: Boolean,
-    modifier: Modifier = Modifier,
-    onCancel: (() -> Unit)? = null
+    modifier: Modifier = Modifier
 ) {
     val alignment = if (isFromUser) Alignment.CenterEnd else Alignment.CenterStart
     val shimmerAlpha by rememberInfiniteTransition(label = "loading_transition")
@@ -168,19 +170,73 @@ private fun LoadingMessageBubble(
                         )
                     }
                 }
-                if (onCancel != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StreamingMessageBubble(
+    message: Message,
+    modifier: Modifier = Modifier
+) {
+    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val pulseAlpha by rememberInfiniteTransition(label = "streaming_pulse")
+        .animateFloat(
+            initialValue = 0.3f,
+            targetValue = 0.8f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 900, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "streaming_alpha"
+        )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Column(
+            modifier = Modifier.widthIn(max = 300.dp),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 16.dp,
+                            topEnd = 16.dp,
+                            bottomStart = 4.dp,
+                            bottomEnd = 16.dp
+                        )
+                    )
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(12.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Cancel",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelMedium,
+                        text = message.content,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 16.sp
+                    )
+                    LinearProgressIndicator(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable(onClick = onCancel)
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .fillMaxWidth()
+                            .height(4.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = pulseAlpha),
+                        trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f)
                     )
                 }
             }
+
+            Text(
+                text = timeFormat.format(message.timestamp),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp)
+            )
         }
     }
 }

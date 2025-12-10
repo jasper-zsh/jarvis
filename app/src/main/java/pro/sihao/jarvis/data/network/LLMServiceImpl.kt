@@ -1,41 +1,37 @@
 package pro.sihao.jarvis.data.network
 
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.first
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
-import pro.sihao.jarvis.data.network.api.OpenAICompatibleApiService
-import pro.sihao.jarvis.data.network.dto.OpenAIRequest
-import pro.sihao.jarvis.data.network.dto.OpenAIResponse
-import pro.sihao.jarvis.data.network.dto.ContentPart
-import pro.sihao.jarvis.data.network.dto.InputAudioPayload
-import pro.sihao.jarvis.data.network.dto.StreamChunk
-import pro.sihao.jarvis.data.repository.ProviderRepository
-import pro.sihao.jarvis.data.repository.ModelConfigRepository
-import pro.sihao.jarvis.data.repository.ModelConfiguration
-import pro.sihao.jarvis.data.database.entity.LLMProviderEntity
-import pro.sihao.jarvis.data.database.entity.ModelConfigEntity
-import pro.sihao.jarvis.domain.model.Message
-import pro.sihao.jarvis.domain.service.LLMService
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import java.util.Date
-import javax.inject.Inject
-import javax.inject.Singleton
 import android.util.Base64
-import java.io.File
-import okhttp3.Request
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import okio.buffer
-import okio.source
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.logging.HttpLoggingInterceptor
+import okio.source
+import pro.sihao.jarvis.data.database.entity.LLMProviderEntity
+import pro.sihao.jarvis.data.network.dto.ContentPart
+import pro.sihao.jarvis.data.network.dto.InputAudioPayload
+import pro.sihao.jarvis.data.network.dto.OpenAIRequest
+import pro.sihao.jarvis.data.repository.ModelConfigRepository
+import pro.sihao.jarvis.data.repository.ModelConfiguration
+import pro.sihao.jarvis.data.repository.ProviderRepository
+import pro.sihao.jarvis.domain.model.ContentType
+import pro.sihao.jarvis.domain.model.Message
+import pro.sihao.jarvis.domain.service.LLMService
+import pro.sihao.jarvis.domain.service.LLMStreamEvent
+import java.io.File
+import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.inject.Inject
+import javax.inject.Singleton
 
 @Singleton
 class LLMServiceImpl @Inject constructor(
@@ -43,29 +39,9 @@ class LLMServiceImpl @Inject constructor(
     private val modelConfigRepository: ModelConfigRepository
 ) : LLMService {
     private val cancelFlag = AtomicBoolean(false)
-    @Volatile private var partialListener: ((String) -> Unit)? = null
 
-    override fun setPartialListener(listener: ((String) -> Unit)?) {
-        partialListener = listener
-    }
-
-    // Get active API service based on database configuration
-    private suspend fun getActiveApiService(): OpenAICompatibleApiService {
-        val activeProvider = providerRepository.getActiveProvider()
-
-        val baseUrl = activeProvider?.baseUrl ?: APIConfig.OPENAI.baseUrl
-
-        val logging = HttpLoggingInterceptor()
-        logging.setLevel(HttpLoggingInterceptor.Level.BODY)
-
-        val client = buildHttpClient(logging)
-
-        return Retrofit.Builder()
-            .baseUrl(baseUrl)
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(OpenAICompatibleApiService::class.java)
+    override fun cancelActiveRequest() {
+        cancelFlag.set(true)
     }
 
     private fun buildHttpClient(logging: HttpLoggingInterceptor = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY }): OkHttpClient {
@@ -147,38 +123,24 @@ class LLMServiceImpl @Inject constructor(
         }.getOrNull()
     }
 
-    override fun cancelActiveRequest() {
-        cancelFlag.set(true)
-    }
-
-    private suspend fun sendChatRequest(
-        provider: pro.sihao.jarvis.data.database.entity.LLMProviderEntity,
-        apiKey: String,
-        request: OpenAIRequest
-    ): Result<String> {
-        cancelFlag.set(false)
-        return withContext(Dispatchers.IO) {
-            val result = streamChatCompletion(provider.baseUrl, "Bearer $apiKey", request)
-            cancelFlag.set(false)
-            partialListener = null
-            result
-        }
-    }
-
-    // Get API key for active provider
     private suspend fun getApiKeyForActiveProvider(providerId: Long): String? {
         return providerRepository.getApiKeyForProvider(providerId)
     }
 
-    private suspend fun streamChatCompletion(
+    private fun resolveBaseUrl(provider: LLMProviderEntity?): String {
+        return provider?.baseUrl ?: APIConfig.OPENAI.baseUrl
+    }
+
+    private fun streamChatCompletion(
         baseUrl: String,
         authorization: String,
         request: OpenAIRequest
-    ): Result<String> {
-        return try {
+    ): Flow<LLMStreamEvent> {
+        return flow {
+            cancelFlag.set(false)
             val gson = Gson()
             val client = buildHttpClient()
-            val url = if (baseUrl.endsWith("/")) "$baseUrl" else "$baseUrl/"
+            val url = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
             val fullUrl = "${url}chat/completions"
 
             val streamingRequest = request.copy(stream = true)
@@ -190,135 +152,193 @@ class LLMServiceImpl @Inject constructor(
                 .post(jsonBody.toRequestBody("application/json".toMediaType()))
                 .build()
 
-            withContext(Dispatchers.IO) {
-                val call = client.newCall(httpRequest)
+            val call = client.newCall(httpRequest)
+            try {
                 call.execute().use { response ->
                     if (!response.isSuccessful) {
-                        return@withContext Result.failure(Exception("API Error: ${response.code} ${response.message}"))
+                        emit(LLMStreamEvent.Error(Exception("API Error: ${response.code} ${response.message}")))
+                        return@use
                     }
-                    val body = response.body ?: return@withContext Result.failure(Exception("Empty response body"))
+                    val body = response.body
+                    if (body == null) {
+                        emit(LLMStreamEvent.Error(Exception("Empty response body")))
+                        return@use
+                    }
+
                     val source = body.source()
                     val sb = StringBuilder()
                     var readLines = 0
-            while (true) {
-                if (!isActive || cancelFlag.get()) {
-                    call.cancel()
-                    return@withContext Result.failure(Exception("Canceled"))
-                }
+
+                    while (true) {
+                        if (!currentCoroutineContext().isActive || cancelFlag.get()) {
+                            call.cancel()
+                            emit(LLMStreamEvent.Canceled)
+                            return@use
+                        }
                         val line = source.readUtf8Line() ?: break
                         readLines++
-                        println("LLM stream line: <$line>")
                         val trimmed = line.trim()
                         if (trimmed.isEmpty()) continue
                         if (trimmed.startsWith("data:")) {
                             val payload = trimmed.removePrefix("data:").trim()
                             if (payload == "[DONE]") break
-                            println("LLM stream chunk payload: $payload")
                             val deltaText = extractTextFromPayload(payload, gson)
                             if (!deltaText.isNullOrBlank()) {
                                 sb.append(deltaText)
-                                partialListener?.invoke(sb.toString())
+                                emit(LLMStreamEvent.Partial(sb.toString()))
                             }
                         }
                     }
                     val resultText = sb.toString()
-                    if (resultText.isBlank()) {
-                        Result.failure(Exception("Empty streamed content (lines=$readLines)"))
+                    if (cancelFlag.get()) {
+                        emit(LLMStreamEvent.Canceled)
+                    } else if (resultText.isBlank()) {
+                        emit(LLMStreamEvent.Error(Exception("Empty streamed content (lines=$readLines)")))
                     } else {
-                        Result.success(resultText)
+                        emit(LLMStreamEvent.Complete(resultText))
                     }
                 }
+            } catch (e: Exception) {
+                emit(LLMStreamEvent.Error(Exception(e.message ?: e.toString())))
+            } finally {
+                cancelFlag.set(false)
             }
-        } catch (e: Exception) {
-            Result.failure(Exception(e.message ?: e.toString()))
+        }.flowOn(Dispatchers.IO)
+    }
+
+    private fun buildBaseMessages(conversationHistory: List<Message>): MutableList<pro.sihao.jarvis.data.network.dto.OpenAIMessage> {
+        val messages = mutableListOf<pro.sihao.jarvis.data.network.dto.OpenAIMessage>()
+
+        messages.add(
+            pro.sihao.jarvis.data.network.dto.OpenAIMessage(
+                role = "system",
+                content = listOf(
+                    ContentPart(
+                        type = "text",
+                        text = "You are Jarvis, a helpful AI assistant. Be concise and friendly."
+                    )
+                )
+            )
+        )
+
+        conversationHistory.takeLast(10).forEach { msg ->
+            messages.add(
+                pro.sihao.jarvis.data.network.dto.OpenAIMessage(
+                    role = if (msg.isFromUser) "user" else "assistant",
+                    content = listOf(
+                        ContentPart(
+                            type = "text",
+                            text = msg.content
+                        )
+                    )
+                )
+            )
         }
+
+        return messages
+    }
+
+    private fun buildMediaAwareHistory(conversationHistory: List<Message>): MutableList<pro.sihao.jarvis.data.network.dto.OpenAIMessage> {
+        val messages = mutableListOf<pro.sihao.jarvis.data.network.dto.OpenAIMessage>()
+
+        messages.add(
+            pro.sihao.jarvis.data.network.dto.OpenAIMessage(
+                role = "system",
+                content = listOf(
+                    ContentPart(
+                        type = "text",
+                        text = "You are Jarvis, a helpful AI assistant. Be concise and friendly. You can analyze images, transcribe voice messages, and understand various media formats."
+                    )
+                )
+            )
+        )
+
+        conversationHistory.takeLast(10).forEach { msg ->
+            val parts = when (msg.contentType) {
+                ContentType.TEXT -> listOf(
+                    ContentPart(type = "text", text = msg.content)
+                )
+                ContentType.VOICE -> {
+                    val encoded = msg.mediaUrl?.let { encodeFileToBase64(it) }
+                    buildList {
+                        encoded?.let {
+                            add(
+                                ContentPart(
+                                    type = "input_audio",
+                                    input_audio = InputAudioPayload(
+                                        data = "data:;base64,$it",
+                                        format = "aac"
+                                    )
+                                )
+                            )
+                        }
+                        add(ContentPart(type = "text", text = if (msg.content.isNotBlank()) msg.content else "[Voice message]"))
+                    }
+                }
+                ContentType.PHOTO -> listOf(
+                    ContentPart(
+                        type = "text",
+                        text = if (msg.content.isNotBlank()) msg.content else "[Photo - user sent an image]"
+                    )
+                )
+            }
+            messages.add(
+                pro.sihao.jarvis.data.network.dto.OpenAIMessage(
+                    role = if (msg.isFromUser) "user" else "assistant",
+                    content = parts
+                )
+            )
+        }
+
+        return messages
     }
 
     override suspend fun sendMessage(
         message: String,
         conversationHistory: List<Message>,
         apiKey: String?
-    ): Flow<Result<String>> = flow {
-        try {
-            // Get active provider
-            val provider = providerRepository.getActiveProvider()
+    ): Flow<LLMStreamEvent> = flow {
+        val provider = providerRepository.getActiveProvider()
 
-            if (provider == null) {
-                emit(Result.failure(Exception("No provider configured")))
-                return@flow
-            }
-
-            // Get API key
-            val effectiveApiKey = apiKey ?: getApiKeyForActiveProvider(provider.id)
-            if (effectiveApiKey.isNullOrEmpty()) {
-                emit(Result.failure(Exception("No API key configured for provider: ${provider.displayName}")))
-                return@flow
-            }
-
-            // Get model configuration
-            val resolvedModel = resolveModelForProvider(provider.id)
-            val modelName = resolvedModel?.name
-            if (modelName.isNullOrEmpty()) {
-                emit(Result.failure(Exception("No model configured for provider: ${provider.displayName}")))
-                return@flow
-            }
-
-            val openAIMessages = mutableListOf<pro.sihao.jarvis.data.network.dto.OpenAIMessage>()
-
-            // Add system message
-            openAIMessages.add(
-                pro.sihao.jarvis.data.network.dto.OpenAIMessage(
-                    role = "system",
-                    content = listOf(
-                        ContentPart(
-                            type = "text",
-                            text = "You are Jarvis, a helpful AI assistant. Be concise and friendly."
-                        )
-                    )
-                )
-            )
-
-            // Add conversation history (last 10 messages for context)
-            conversationHistory.takeLast(10).forEach { msg ->
-                openAIMessages.add(
-                    pro.sihao.jarvis.data.network.dto.OpenAIMessage(
-                        role = if (msg.isFromUser) "user" else "assistant",
-                        content = listOf(
-                            ContentPart(
-                                type = "text",
-                                text = msg.content
-                            )
-                        )
-                    )
-                )
-            }
-
-            // Add current message
-            openAIMessages.add(
-                pro.sihao.jarvis.data.network.dto.OpenAIMessage(
-                    role = "user",
-                    content = listOf(
-                        ContentPart(
-                            type = "text",
-                            text = message
-                        )
-                    )
-                )
-            )
-
-            // Create request with model configuration
-            val request = OpenAIRequest(
-                model = modelName,
-                messages = openAIMessages,
-                temperature = resolvedModel.config?.temperature ?: 0.7f,
-                max_tokens = resolvedModel.config?.maxTokens
-            )
-
-            val streamResult = sendChatRequest(provider, effectiveApiKey, request)
-            emit(streamResult)
-        } catch (e: Exception) {
-            emit(Result.failure(e))
+        if (provider == null) {
+            emit(LLMStreamEvent.Error(Exception("No provider configured")))
+            return@flow
         }
+
+        val effectiveApiKey = apiKey ?: getApiKeyForActiveProvider(provider.id)
+        if (effectiveApiKey.isNullOrEmpty()) {
+            emit(LLMStreamEvent.Error(Exception("No API key configured for provider: ${provider.displayName}")))
+            return@flow
+        }
+
+        val resolvedModel = resolveModelForProvider(provider.id)
+        val modelName = resolvedModel?.name
+        if (modelName.isNullOrEmpty()) {
+            emit(LLMStreamEvent.Error(Exception("No model configured for provider: ${provider.displayName}")))
+            return@flow
+        }
+
+        val openAIMessages = buildBaseMessages(conversationHistory)
+        openAIMessages.add(
+            pro.sihao.jarvis.data.network.dto.OpenAIMessage(
+                role = "user",
+                content = listOf(
+                    ContentPart(
+                        type = "text",
+                        text = message
+                    )
+                )
+            )
+        )
+
+        val request = OpenAIRequest(
+            model = modelName,
+            messages = openAIMessages,
+            temperature = resolvedModel.config?.temperature ?: 0.7f,
+            max_tokens = resolvedModel.config?.maxTokens
+        )
+
+        emitAll(streamChatCompletion(resolveBaseUrl(provider), "Bearer $effectiveApiKey", request))
     }
 
     override suspend fun sendMessage(
@@ -326,140 +346,76 @@ class LLMServiceImpl @Inject constructor(
         conversationHistory: List<Message>,
         mediaMessage: Message?,
         apiKey: String?
-    ): Flow<Result<String>> = flow {
-        try {
-            // Get active provider
-            val provider = providerRepository.getActiveProvider()
+    ): Flow<LLMStreamEvent> = flow {
+        val provider = providerRepository.getActiveProvider()
 
-            if (provider == null) {
-                emit(Result.failure(Exception("No provider configured")))
-                return@flow
-            }
+        if (provider == null) {
+            emit(LLMStreamEvent.Error(Exception("No provider configured")))
+            return@flow
+        }
 
-            // Get API key
-            val effectiveApiKey = apiKey ?: getApiKeyForActiveProvider(provider.id)
-            if (effectiveApiKey.isNullOrEmpty()) {
-                emit(Result.failure(Exception("No API key configured for provider: ${provider.displayName}")))
-                return@flow
-            }
+        val effectiveApiKey = apiKey ?: getApiKeyForActiveProvider(provider.id)
+        if (effectiveApiKey.isNullOrEmpty()) {
+            emit(LLMStreamEvent.Error(Exception("No API key configured for provider: ${provider.displayName}")))
+            return@flow
+        }
 
-            // Get model configuration
-            val resolvedModel = resolveModelForProvider(provider.id)
-            val modelName = resolvedModel?.name
-            if (modelName.isNullOrEmpty()) {
-                emit(Result.failure(Exception("No model configured for provider: ${provider.displayName}")))
-                return@flow
-            }
+        val resolvedModel = resolveModelForProvider(provider.id)
+        val modelName = resolvedModel?.name
+        if (modelName.isNullOrEmpty()) {
+            emit(LLMStreamEvent.Error(Exception("No model configured for provider: ${provider.displayName}")))
+            return@flow
+        }
 
-            // Get API service for this provider
-            val apiService = getActiveApiService()
+        val openAIMessages = buildMediaAwareHistory(conversationHistory)
 
-            val openAIMessages = mutableListOf<pro.sihao.jarvis.data.network.dto.OpenAIMessage>()
-
-            // Add system message
-            openAIMessages.add(
-                pro.sihao.jarvis.data.network.dto.OpenAIMessage(
-                    role = "system",
-                    content = listOf(
-                        ContentPart(
-                            type = "text",
-                            text = "You are Jarvis, a helpful AI assistant. Be concise and friendly. " +
-                                    "You can analyze images, transcribe voice messages, and understand various media formats."
-                        )
-                    )
-                )
-            )
-
-            // Add conversation history (last 10 messages for context)
-            conversationHistory.takeLast(10).forEach { msg ->
-                val parts = when (msg.contentType) {
-                    pro.sihao.jarvis.domain.model.ContentType.TEXT -> listOf(
-                        ContentPart(type = "text", text = msg.content)
-                    )
-                    pro.sihao.jarvis.domain.model.ContentType.VOICE -> {
-                        val encoded = msg.mediaUrl?.let { encodeFileToBase64(it) }
-                        buildList {
-                            encoded?.let {
-                                add(
-                                    ContentPart(
-                                        type = "input_audio",
-                                        input_audio = InputAudioPayload(
-                                            data = "data:;base64,$it",
-                                            format = "aac"
-                                        )
-                                    )
-                                )
-                            }
-                            add(ContentPart(type = "text", text = if (msg.content.isNotBlank()) msg.content else "[Voice message]"))
-                        }
-                    }
-                    pro.sihao.jarvis.domain.model.ContentType.PHOTO -> listOf(
-                        ContentPart(
-                            type = "text",
-                            text = if (msg.content.isNotBlank()) msg.content else "[Photo - user sent an image]"
-                        )
-                    )
-                }
-                openAIMessages.add(
-                    pro.sihao.jarvis.data.network.dto.OpenAIMessage(
-                        role = if (msg.isFromUser) "user" else "assistant",
-                        content = parts
-                    )
-                )
-            }
-
-            val userContentParts = mutableListOf<ContentPart>()
-            when {
-                mediaMessage != null && mediaMessage.contentType == pro.sihao.jarvis.domain.model.ContentType.VOICE -> {
-                    mediaMessage.mediaUrl?.let { path ->
-                        encodeFileToBase64(path)?.let { encoded ->
-                            userContentParts.add(
-                                ContentPart(
-                                    type = "input_audio",
-                                    input_audio = InputAudioPayload(
-                                        data = "data:;base64,$encoded",
-                                        format = "aac"
-                                    )
+        val userContentParts = mutableListOf<ContentPart>()
+        when {
+            mediaMessage != null && mediaMessage.contentType == ContentType.VOICE -> {
+                mediaMessage.mediaUrl?.let { path ->
+                    encodeFileToBase64(path)?.let { encoded ->
+                        userContentParts.add(
+                            ContentPart(
+                                type = "input_audio",
+                                input_audio = InputAudioPayload(
+                                    data = "data:;base64,$encoded",
+                                    format = "aac"
                                 )
                             )
-                        }
-                    }
-                    if (message.isNotBlank()) {
-                        userContentParts.add(ContentPart(type = "text", text = message))
-                    }
-                }
-                mediaMessage != null && mediaMessage.contentType == pro.sihao.jarvis.domain.model.ContentType.PHOTO -> {
-                    userContentParts.add(
-                        ContentPart(
-                            type = "text",
-                            text = if (message.isNotBlank()) message else "[Photo]"
                         )
-                    )
+                    }
                 }
-                else -> {
+                if (message.isNotBlank()) {
                     userContentParts.add(ContentPart(type = "text", text = message))
                 }
             }
-
-            openAIMessages.add(
-                pro.sihao.jarvis.data.network.dto.OpenAIMessage(
-                    role = "user",
-                    content = userContentParts
+            mediaMessage != null && mediaMessage.contentType == ContentType.PHOTO -> {
+                userContentParts.add(
+                    ContentPart(
+                        type = "text",
+                        text = if (message.isNotBlank()) message else "[Photo]"
+                    )
                 )
-            )
-
-            // Create request with model configuration
-            val request = OpenAIRequest(
-                model = modelName,
-                messages = openAIMessages,
-                temperature = resolvedModel.config?.temperature ?: 0.7f,
-                max_tokens = resolvedModel.config?.maxTokens
-            )
-
-            val streamResult = sendChatRequest(provider, effectiveApiKey, request)
-            emit(streamResult)
-        } catch (e: Exception) {
-            emit(Result.failure(e))
+            }
+            else -> {
+                userContentParts.add(ContentPart(type = "text", text = message))
+            }
         }
+
+        openAIMessages.add(
+            pro.sihao.jarvis.data.network.dto.OpenAIMessage(
+                role = "user",
+                content = userContentParts
+            )
+        )
+
+        val request = OpenAIRequest(
+            model = modelName,
+            messages = openAIMessages,
+            temperature = resolvedModel.config?.temperature ?: 0.7f,
+            max_tokens = resolvedModel.config?.maxTokens
+        )
+
+        emitAll(streamChatCompletion(resolveBaseUrl(provider), "Bearer $effectiveApiKey", request))
     }
 }

@@ -260,6 +260,7 @@ class LLMServiceImpl @Inject constructor(
                 )
                 ContentType.VOICE -> {
                     val encoded = msg.mediaUrl?.let { encodeFileToBase64(it) }
+                    val format = if (msg.mediaUrl?.endsWith(".wav", true) == true) "wav" else "aac"
                     buildList {
                         encoded?.let {
                             add(
@@ -267,7 +268,7 @@ class LLMServiceImpl @Inject constructor(
                                     type = "input_audio",
                                     input_audio = InputAudioPayload(
                                         data = "data:;base64,$it",
-                                        format = "aac"
+                                        format = format
                                     )
                                 )
                             )
@@ -373,13 +374,14 @@ class LLMServiceImpl @Inject constructor(
         when {
             mediaMessage != null && mediaMessage.contentType == ContentType.VOICE -> {
                 mediaMessage.mediaUrl?.let { path ->
+                    val format = if (path.endsWith(".wav", true)) "wav" else "aac"
                     encodeFileToBase64(path)?.let { encoded ->
                         userContentParts.add(
                             ContentPart(
                                 type = "input_audio",
                                 input_audio = InputAudioPayload(
                                     data = "data:;base64,$encoded",
-                                    format = "aac"
+                                    format = format
                                 )
                             )
                         )

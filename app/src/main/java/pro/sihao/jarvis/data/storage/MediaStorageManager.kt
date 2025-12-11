@@ -29,17 +29,18 @@ class MediaStorageManager(private val context: Context) {
         thumbnailDir.mkdirs()
     }
 
-    fun createVoiceFile(): File {
-        val fileName = generateUniqueFileName(ContentType.VOICE, "aac")
+    fun createVoiceFile(extension: String = "aac"): File {
+        val fileName = generateUniqueFileName(ContentType.VOICE, extension)
         return File(voiceDir, fileName)
     }
 
     fun generateUniqueFileName(contentType: ContentType, extension: String): String {
         val uuid = UUID.randomUUID().toString()
+        val ext = extension.takeIf { it.startsWith(".") } ?: ".$extension"
         return when (contentType) {
-            ContentType.VOICE -> "${uuid}${MediaConstants.VOICE_EXTENSION}"
-            ContentType.PHOTO -> "${uuid}.${extension}"
-            ContentType.TEXT -> "${uuid}.txt"
+            ContentType.VOICE -> "$uuid$ext"
+            ContentType.PHOTO -> "$uuid.$extension"
+            ContentType.TEXT -> "$uuid.txt"
         }
     }
 

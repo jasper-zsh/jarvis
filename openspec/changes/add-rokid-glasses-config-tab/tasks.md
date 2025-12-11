@@ -1,0 +1,13 @@
+## 1. Implementation
+- [x] 1.1 Add navigation entry point from Settings to the new Glasses tab/screen.
+- [x] 1.2 Implement Rokid glasses Bluetooth discovery and permission handling (request permissions, prompt to enable BT, scan for Rokid devices, list bonded/connected devices using service UUID filter).
+- [x] 1.3 Implement Rokid glasses connection state holder using the CXR client (connect/disconnect/status/error) wired to the scan results.
+- [x] 1.4 Build Glasses tab UI to show connection status, discovered/bonded devices, trigger connect/disconnect, and display errors.
+- [x] 1.5 Add configurable options for glasses integration (e.g., enable glasses input/output), with persistence.
+- [x] 1.6 Thread glasses settings into chat/integration flows as required (respect enable/disable options).
+- [x] 1.7 Add tests/validation (unit or integration where feasible) and manual checklists for the new tab, Bluetooth flow, and connection lifecycle. (Manual verification recommended on device; automated tests not run here.)
+    - Include validation for `initBluetooth` → `onConnectionInfo(socketUuid, macAddress, …)` → `connect(context, uuid, mac)` success/failure paths with `ValueUtil.CxrBluetoothErrorCode` and lifecycle callbacks (`onConnected`, `onDisconnected`, `onFailed`).
+    - Confirm connection status reporting via `CxrApi.getInstance().isBluetoothConnected` is reflected in UI and used to gate actions.
+    - Validate clean disconnect/deinit via `CxrApi.getInstance().deinitBluetooth()` only on app exit or when deleting a glasses entry (not on routine tab navigation).
+    - Implement auto-reconnect on app start/resume when a persisted, previously connected glasses device exists and Bluetooth/permissions are available; surface reconnect success/failure.
+    - Show connected glasses info card with device name/status and all available metadata (Rokid account, glasses type, socket UUID, MAC) derived from callbacks.

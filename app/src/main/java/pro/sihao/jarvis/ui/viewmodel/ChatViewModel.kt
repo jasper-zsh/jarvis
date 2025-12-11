@@ -20,6 +20,8 @@ import pro.sihao.jarvis.media.VoicePlayer
 import pro.sihao.jarvis.media.PhotoCaptureManager
 import pro.sihao.jarvis.permission.PermissionManager
 import pro.sihao.jarvis.data.storage.MediaStorageManager
+import pro.sihao.jarvis.data.storage.GlassesPreferences
+import pro.sihao.jarvis.domain.model.GlassesIntegrationSettings
 import pro.sihao.jarvis.ui.model.InputMode
 import java.io.File
 import java.util.Date
@@ -36,7 +38,8 @@ class ChatViewModel @Inject constructor(
     private val mediaStorageManager: MediaStorageManager,
     private val voiceRecorder: VoiceRecorder,
     private val voicePlayer: VoicePlayer,
-    private val photoCaptureManager: PhotoCaptureManager
+    private val photoCaptureManager: PhotoCaptureManager,
+    private val glassesPreferences: GlassesPreferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -50,6 +53,7 @@ class ChatViewModel @Inject constructor(
         loadCurrentModel()
         observeMediaStates()
         checkPermissions()
+        loadGlassesIntegrationSettings()
     }
 
     fun refreshPermissions() {
@@ -94,6 +98,11 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(permissionStatus = permissionSummary) }
     }
 
+    private fun loadGlassesIntegrationSettings() {
+        val settings = glassesPreferences.loadSettings()
+        _uiState.update { it.copy(glassesIntegrationSettings = settings) }
+    }
+
     private fun loadMessages() {
         viewModelScope.launch {
             messageRepository.getAllMessages().collect { messages ->
@@ -120,6 +129,10 @@ class ChatViewModel @Inject constructor(
 
     fun refreshAvailableModels() {
         refreshModels()
+    }
+
+    fun refreshGlassesIntegrationSettings() {
+        loadGlassesIntegrationSettings()
     }
 
     
@@ -807,5 +820,6 @@ data class ChatUiState(
         galleryStatus = PermissionManager.PermissionStatus.NOT_REQUIRED,
         hasMicrophoneHardware = false,
         hasCameraHardware = false
-    )
+    ),
+    val glassesIntegrationSettings: GlassesIntegrationSettings = GlassesIntegrationSettings()
 )

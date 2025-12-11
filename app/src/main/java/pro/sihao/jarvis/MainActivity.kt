@@ -16,6 +16,7 @@ import pro.sihao.jarvis.ui.screens.ProviderListScreen
 import pro.sihao.jarvis.ui.screens.ProviderConfigScreen
 import pro.sihao.jarvis.ui.screens.ModelSelectorScreen
 import pro.sihao.jarvis.ui.screens.ModelConfigScreen
+import pro.sihao.jarvis.ui.screens.GlassesScreen
 import pro.sihao.jarvis.ui.theme.JarvisTheme
 
 @AndroidEntryPoint
@@ -46,6 +47,16 @@ class MainActivity : ComponentActivity() {
                             },
                             onNavigateToProviderManagement = {
                                 navController.navigate("providers")
+                            },
+                            onNavigateToGlasses = {
+                                navController.navigate("glasses")
+                            }
+                        )
+                    }
+                    composable("glasses") {
+                        GlassesScreen(
+                            onBackClick = {
+                                navController.popBackStack()
                             }
                         )
                     }

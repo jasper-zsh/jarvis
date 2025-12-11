@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "pro.sihao.jarvis"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
@@ -73,6 +73,7 @@ dependencies {
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.dashscope)
+    implementation("com.rokid.cxr:client-m:1.0.1-20250812.080117-2")
 
     // Dependency Injection - Hilt
     implementation(libs.hilt.android)

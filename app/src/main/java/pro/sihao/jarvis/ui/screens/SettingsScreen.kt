@@ -24,6 +24,7 @@ import pro.sihao.jarvis.ui.viewmodel.SettingsViewModel
 fun SettingsScreen(
     onBackClick: () -> Unit,
     onNavigateToProviderManagement: () -> Unit,
+    onNavigateToGlasses: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     Scaffold(
@@ -77,6 +78,35 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Manage Providers")
+                    }
+                }
+            }
+
+            // Rokid Glasses Section
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Rokid Glasses",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = "Connect, configure, and manage Rokid glasses integration",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Button(
+                        onClick = onNavigateToGlasses,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Open Glasses Tab")
                     }
                 }
             }

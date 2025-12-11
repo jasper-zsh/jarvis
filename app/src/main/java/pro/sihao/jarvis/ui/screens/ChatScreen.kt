@@ -102,6 +102,7 @@ fun ChatScreen(
     LaunchedEffect(Unit) {
         viewModel.refreshApiKeyStatus()
         viewModel.refreshAvailableModels()
+        viewModel.refreshGlassesIntegrationSettings()
     }
 
     Scaffold(

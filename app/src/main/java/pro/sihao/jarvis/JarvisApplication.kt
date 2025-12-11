@@ -1,11 +1,13 @@
 package pro.sihao.jarvis
 
 import android.app.Application
+import android.content.Intent
 import dagger.hilt.android.HiltAndroidApp
 import pro.sihao.jarvis.data.database.initializer.DatabaseInitializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import pro.sihao.jarvis.service.GlassesConnectionService
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -21,5 +23,8 @@ class JarvisApplication : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             databaseInitializer.initializeIfNeeded()
         }
+
+        // Start background service to keep Rokid glasses auto-reconnect active.
+        startService(Intent(this, GlassesConnectionService::class.java))
     }
 }

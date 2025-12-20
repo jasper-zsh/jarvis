@@ -40,7 +40,6 @@ import pro.sihao.jarvis.domain.model.GlassesConnectionStatus
 import pro.sihao.jarvis.domain.model.RokidGlassesDevice
 import pro.sihao.jarvis.domain.model.ContentType
 import pro.sihao.jarvis.domain.model.Message
-import pro.sihao.jarvis.media.VadWrapper
 import pro.sihao.jarvis.domain.repository.MessageRepository
 import pro.sihao.jarvis.domain.service.LLMService
 import kotlinx.coroutines.flow.first
@@ -87,7 +86,6 @@ class GlassesConnectionManager @Inject constructor(
     private var connectionTimeoutJob: Job? = null
     private var reconnectJob: Job? = null
     private var currentAudioJob: Job? = null
-    private var vad: VadWrapper? = null
     private var audioBuffer = mutableListOf<Short>()
     private var isSpeechActive = false
     private var utteranceStartTs: Long = 0L
@@ -182,29 +180,18 @@ class GlassesConnectionManager @Inject constructor(
 
         override fun onAudioStream(data: ByteArray?, offset: Int, length: Int) {
             if (data == null || streamCodecType != 1) return // handle only PCM
-            val vadInstance = vad ?: return
+            
             // Convert little-endian 16-bit PCM to short samples
             val buf = ByteBuffer.wrap(data, offset, length).order(ByteOrder.LITTLE_ENDIAN)
             val samples = ShortArray(length / 2)
             buf.asShortBuffer().get(samples)
 
-            // Feed per frame according to VAD frame size
-            var idx = 0
-            while (idx + vadInstance.frameSizeSamples <= samples.size) {
-                val frame = samples.copyOfRange(idx, idx + vadInstance.frameSizeSamples)
-                idx += vadInstance.frameSizeSamples
-                val speech = vadInstance.isSpeech(frame)
-                if (speech) {
-                    isSpeechActive = true
-                    if (utteranceStartTs == 0L) utteranceStartTs = System.currentTimeMillis()
-                    audioBuffer.addAll(frame.toList())
-                } else if (isSpeechActive) {
-                    // silence after speech -> end utterance
-                    audioBuffer.addAll(frame.toList())
-                    finalizeUtterance()
-                } else {
-                    // ignore leading silence
-                }
+            // Add all audio samples to buffer without VAD filtering
+            audioBuffer.addAll(samples.toList())
+            
+            // Auto-finalize utterance after a reasonable duration (e.g., 3 seconds of audio)
+            if (audioBuffer.size >= 16000 * 3) { // 3 seconds at 16kHz
+                finalizeUtterance()
             }
         }
     }
@@ -216,7 +203,6 @@ class GlassesConnectionManager @Inject constructor(
     }
 
     private fun finalizeUtterance() {
-        val vadInstance = vad ?: return
         val samples = audioBuffer.toShortArray()
         resetAudioBuffer()
         if (samples.isEmpty()) return
@@ -224,8 +210,10 @@ class GlassesConnectionManager @Inject constructor(
         currentAudioJob = scope.launch {
             try {
                 val file = mediaStorageManager.createVoiceFile("wav")
-                writeWavFile(file, samples, vadInstance.sampleRateHz)
-                val durationMs = samples.size * 1000L / vadInstance.sampleRateHz
+                // Use standard sample rate of 16kHz since we no longer have VAD instance
+                val sampleRate = 16000
+                writeWavFile(file, samples, sampleRate)
+                val durationMs = samples.size * 1000L / sampleRate
                 val voiceMessage = Message(
                     content = "Glasses voice command",
                     timestamp = Date(),
@@ -479,10 +467,6 @@ class GlassesConnectionManager @Inject constructor(
         rokidAccount: String?,
         glassesType: Int?
     ) {
-        // Ensure VAD is ready when connected
-        if (vad == null) {
-            vad = VadWrapper(context)
-        }
         _connectionState.update {
             it.copy(
                 connectionStatus = GlassesConnectionStatus.CONNECTING,

@@ -1,0 +1,3 @@
+[submodule "pipecat-examples"]
+	path = pipecat-examples
+	url = https://github.com/pipecat-ai/pipecat-examples.git

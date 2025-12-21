@@ -2,11 +2,12 @@ package pro.sihao.jarvis
 
 import android.app.Application
 import android.content.Intent
+import android.util.Log
 import dagger.hilt.android.HiltAndroidApp
-import pro.sihao.jarvis.core.data.database.initializer.DatabaseInitializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import pro.sihao.jarvis.core.initialization.AppInitializationCoordinator
 import pro.sihao.jarvis.service.GlassesConnectionService
 import javax.inject.Inject
 
@@ -14,17 +15,32 @@ import javax.inject.Inject
 class JarvisApplication : Application() {
 
     @Inject
-    lateinit var databaseInitializer: DatabaseInitializer
+    lateinit var initializationCoordinator: AppInitializationCoordinator
 
     override fun onCreate() {
         super.onCreate()
+        Log.d("JarvisApplication", "Application onCreate started")
 
-        // Initialize database in background
-        CoroutineScope(Dispatchers.IO).launch {
-            databaseInitializer.initializeIfNeeded()
+        // Initialize app with proper sequencing
+        initializationCoordinator.initialize()
+
+        // Start background service for persistent connection
+        // Note: Service now handles proper initialization timing internally
+        CoroutineScope(Dispatchers.Main).launch {
+            // Wait a bit for initialization to start before starting service
+            kotlinx.coroutines.delay(1000)
+            try {
+                startService(Intent(this@JarvisApplication, GlassesConnectionService::class.java))
+                Log.d("JarvisApplication", "GlassesConnectionService started")
+            } catch (e: Exception) {
+                Log.e("JarvisApplication", "Error starting GlassesConnectionService", e)
+            }
         }
+    }
 
-        // Start background service to keep Rokid glasses auto-reconnect active.
-        startService(Intent(this, GlassesConnectionService::class.java))
+    override fun onTerminate() {
+        super.onTerminate()
+        initializationCoordinator.cleanup()
+        Log.d("JarvisApplication", "Application terminated and cleaned up")
     }
 }

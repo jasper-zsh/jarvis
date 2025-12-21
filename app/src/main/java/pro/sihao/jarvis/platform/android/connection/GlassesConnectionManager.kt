@@ -107,21 +107,65 @@ class GlassesConnectionManager @Inject constructor(
     }
 
     fun ensureAutoReconnect() {
+        android.util.Log.d("GlassesConnectionManager", "ensureAutoReconnect() called")
+
         updateBluetoothState()
         refreshPersistedDevice()
-        val persisted = _connectionState.value.persistedDevice
-        if (_connectionState.value.connectionStatus == GlassesConnectionStatus.CONNECTED) return
-        if (_connectionState.value.connectionStatus == GlassesConnectionStatus.CONNECTING) return
-        if (persisted?.socketUuid.isNullOrEmpty() || persisted?.macAddress.isNullOrEmpty()) return
-        if (!hasPermissions()) return
-        if (bluetoothAdapter?.isEnabled != true) return
-        connectWithIdentifiers(
-            socketUuid = persisted!!.socketUuid!!,
-            macAddress = persisted.macAddress!!,
-            name = persisted.name,
-            rokidAccount = persisted.rokidAccount,
-            glassesType = persisted.glassesType
-        )
+
+        val currentState = _connectionState.value
+        val persisted = currentState.persistedDevice
+
+        android.util.Log.d("GlassesConnectionManager", "Auto-reconnect checks: " +
+            "currentStatus=${currentState.connectionStatus}, " +
+            "hasPersistedDevice=${persisted != null}, " +
+            "hasPermissions=${hasPermissions()}, " +
+            "isBluetoothEnabled=${bluetoothAdapter?.isEnabled == true}")
+
+        when (currentState.connectionStatus) {
+            GlassesConnectionStatus.CONNECTED -> {
+                android.util.Log.d("GlassesConnectionManager", "Already connected, skipping auto-reconnect")
+                return
+            }
+            GlassesConnectionStatus.CONNECTING -> {
+                android.util.Log.d("GlassesConnectionManager", "Already connecting, skipping auto-reconnect")
+                return
+            }
+            else -> { /* Continue with connection attempt */ }
+        }
+
+        if (persisted?.socketUuid?.isNullOrEmpty() != false || persisted?.macAddress?.isNullOrEmpty() != false) {
+            android.util.Log.w("GlassesConnectionManager", "No saved glasses device found for auto-reconnect: " +
+                "socketUuid=${persisted?.socketUuid}, macAddress=${persisted?.macAddress}")
+            return
+        }
+
+        if (!hasPermissions()) {
+            android.util.Log.w("GlassesConnectionManager", "Missing required Bluetooth permissions for auto-reconnect")
+            return
+        }
+
+        if (bluetoothAdapter?.isEnabled != true) {
+            android.util.Log.w("GlassesConnectionManager", "Bluetooth is not enabled for auto-reconnect")
+            return
+        }
+
+        android.util.Log.i("GlassesConnectionManager", "Initiating auto-reconnect to saved glasses: " +
+            "name=${persisted.name}, mac=${persisted.macAddress}, socket=${persisted.socketUuid}")
+
+        try {
+            connectWithIdentifiers(
+                socketUuid = persisted.socketUuid!!,
+                macAddress = persisted.macAddress!!,
+                name = persisted.name,
+                rokidAccount = persisted.rokidAccount,
+                glassesType = persisted.glassesType
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("GlassesConnectionManager", "Exception during auto-reconnect initiation", e)
+            _connectionState.update {
+                it.copy(errorMessage = "Auto-reconnect failed: ${e.message}")
+            }
+        }
     }
 
     fun hasPermissions(): Boolean {
@@ -134,6 +178,15 @@ class GlassesConnectionManager @Inject constructor(
     fun refreshPersistedDevice() {
         val persisted = preferences.loadDevice()
         _connectionState.update { it.copy(persistedDevice = persisted) }
+    }
+
+    fun hasPersistedDevice(): Boolean {
+        val persisted = preferences.loadDevice()
+        return persisted?.socketUuid?.isNotEmpty() == true && persisted?.macAddress?.isNotEmpty() == true
+    }
+
+    fun isBluetoothEnabled(): Boolean {
+        return bluetoothAdapter?.isEnabled == true
     }
 
     fun updateBluetoothState() {
@@ -470,4 +523,7 @@ data class GlassesConnectionState(
     val selectedDevice: RokidGlassesDevice? = null,
     val connectionStatus: GlassesConnectionStatus = GlassesConnectionStatus.DISCONNECTED,
     val errorMessage: String? = null
-)
+) {
+    val isConnected: Boolean
+        get() = connectedDevice != null && connectionStatus == GlassesConnectionStatus.CONNECTED
+}

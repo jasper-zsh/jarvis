@@ -1,9 +1,10 @@
 package pro.sihao.jarvis.data.mapper
 
 import org.junit.Test
-import pro.sihao.jarvis.data.database.entity.MessageEntity
-import pro.sihao.jarvis.domain.model.ContentType
-import pro.sihao.jarvis.domain.model.Message
+import pro.sihao.jarvis.core.data.database.entity.MessageEntity
+import pro.sihao.jarvis.core.domain.model.ContentType
+import pro.sihao.jarvis.core.domain.model.Message
+import pro.sihao.jarvis.features.realtime.data.mapper.MessageMapper
 import java.util.Date
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

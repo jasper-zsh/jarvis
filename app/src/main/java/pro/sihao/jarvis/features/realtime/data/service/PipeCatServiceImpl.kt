@@ -11,6 +11,8 @@ import ai.pipecat.client.small_webrtc_transport.SmallWebRTCTransport
 import ai.pipecat.client.types.APIRequest
 import ai.pipecat.client.types.BotOutputData
 import ai.pipecat.client.types.BotReadyData
+import ai.pipecat.client.types.LLMFunctionCallData
+import ai.pipecat.client.types.LLMFunctionCallHandler
 import ai.pipecat.client.types.Participant
 import ai.pipecat.client.types.PipecatMetrics
 import ai.pipecat.client.types.Tracks
@@ -395,6 +397,19 @@ class PipeCatServiceImpl @Inject constructor(
                 )
             }
 
+            pipecatClient?.registerFunctionCallHandler("CloseWhenNothingToDo", object : LLMFunctionCallHandler {
+                override fun handleFunctionCall(
+                    data: LLMFunctionCallData,
+                    onResult: (Value) -> Unit
+                ) {
+                    onResult(Value.Str("Session closed"))
+                    CoroutineScope(Dispatchers.IO).launch {
+                        this@PipeCatServiceImpl.stopRealtimeSession()
+                    }
+                }
+
+            })
+
             // Build API request headers
             val headers = buildMap {
                 config.apiKey?.takeIf { it.isNotEmpty() }?.let {
@@ -412,10 +427,12 @@ class PipeCatServiceImpl @Inject constructor(
                 headers = headers
             )
 
+
             pipecatClient?.startBotAndConnect(apiRequest)?.displayErrors()?.withErrorCallback {
                 // Session ended or disconnected
                 isSessionActive = false
             }
+
 
             isSessionActive = true
 

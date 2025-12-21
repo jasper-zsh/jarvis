@@ -37,8 +37,7 @@ pro/sihao/jarvis/
 │       └── presentation/   # Settings UI (screens, viewmodels)
 ├── platform/               # Platform-specific implementations
 │   ├── android/            # Android-specific utilities
-│   │   ├── audio/          # Audio processing and routing
-│   │   ├── connection/     # Device connections (glasses, etc.)
+│   │   ├── connection/     # Device connections (glasses as Bluetooth headset)
 │   │   ├── media/          # Platform media handling
 │   │   ├── permission/     # Permission management
 │   │   └── service/        # Android services
@@ -102,6 +101,38 @@ This architecture was implemented as part of the `refactor-project-structure` ch
 3. **Documentation**: Update any remaining inline documentation
 4. **Gradual Refinement**: Continue improving the structure as needed
 
+## Audio Architecture
+
+### Simplified Audio Flow (Post-Refactoring)
+
+The glasses integration has been simplified to use standard Android Bluetooth audio routing:
+
+#### Before (Complex Audio Processing)
+- Custom `AudioRoutingManager` with PCM audio processing
+- Custom audio stream listeners and VAD (Voice Activity Detection)
+- Manual audio buffer management and WAV file processing
+- `GlassesPipeCatBridge` for custom state management
+- Complex audio routing with multiple fallback mechanisms
+
+#### After (Standard Bluetooth Headset)
+- Glasses act as standard Bluetooth SCO (Synchronous Connection-Oriented) headset
+- Android `AudioManager` handles all audio routing automatically
+- PipeCat service detects and uses available Bluetooth audio devices
+- Simplified connection management in `GlassesConnectionManager`
+- Standard Android audio permissions and profiles
+
+#### Audio Flow
+1. **Glasses Connection**: Glasses connect via Bluetooth as standard audio device
+2. **Realtime Session**: PipeCat service configures Bluetooth SCO for voice communication
+3. **Audio Routing**: Android automatically routes microphone input and speaker output through glasses
+4. **Fallback**: When glasses disconnected, falls back to phone microphone and speakers
+
+### Benefits of Simplified Architecture
+- **Reduced Complexity**: ~80% reduction in audio-related code
+- **Better Reliability**: Uses Android's proven Bluetooth audio stack
+- **Easier Maintenance**: No custom audio processing to debug and maintain
+- **Standard Compliance**: Works with any Bluetooth headset, not just glasses
+
 ## Development Guidelines
 
 ### Adding New Features
@@ -115,8 +146,8 @@ This architecture was implemented as part of the `refactor-project-structure` ch
 ### Working with Existing Features
 
 1. **Chat**: All chat-related UI in `features/chat/presentation/`
-2. **Real-time**: Real-time communication in `features/realtime/`
-3. **Glasses**: Rokid glasses integration in `features/glasses/`
+2. **Real-time**: Real-time communication in `features/realtime/` with automatic Bluetooth audio routing
+3. **Glasses**: Rokid glasses as standard Bluetooth headset in `features/glasses/`
 4. **Settings**: App configuration in `features/settings/`
 
 ### Shared Components

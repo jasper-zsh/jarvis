@@ -8,8 +8,6 @@ import pro.sihao.jarvis.features.realtime.data.service.PipeCatServiceImpl
 import android.content.Context
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
-import pro.sihao.jarvis.platform.android.audio.AudioRoutingManager
-
 /**
  * Simple test to verify PipeCat integration basic functionality
  */
@@ -18,9 +16,6 @@ class PipeCatIntegrationTest {
     @Mock
     private lateinit var mockContext: Context
 
-    @Mock
-    private lateinit var mockAudioRoutingManager: AudioRoutingManager
-
     private lateinit var pipeCatService: PipeCatServiceImpl
 
     @Test
@@ -28,7 +23,7 @@ class PipeCatIntegrationTest {
         MockitoAnnotations.openMocks(this)
 
         // Initialize PipeCat service
-        pipeCatService = PipeCatServiceImpl(mockContext, mockAudioRoutingManager)
+        pipeCatService = PipeCatServiceImpl(mockContext)
         
         // Verify initial state
         val initialState = pipeCatService.connectionState.value
@@ -42,7 +37,7 @@ class PipeCatIntegrationTest {
     fun `test PipeCat connection state flow`() {
         MockitoAnnotations.openMocks(this)
 
-        pipeCatService = PipeCatServiceImpl(mockContext, mockAudioRoutingManager)
+        pipeCatService = PipeCatServiceImpl(mockContext)
 
         // Test state flow collection
         val states = mutableListOf<PipeCatConnectionState>()

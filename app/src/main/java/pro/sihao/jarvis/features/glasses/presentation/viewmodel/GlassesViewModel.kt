@@ -9,8 +9,7 @@ import pro.sihao.jarvis.platform.android.connection.GlassesConnectionState
 
 @HiltViewModel
 class GlassesViewModel @Inject constructor(
-    private val connectionManager: GlassesConnectionManager,
-    private val glassesPipeCatBridge: pro.sihao.jarvis.features.realtime.data.bridge.GlassesPipeCatBridge? = null
+    private val connectionManager: GlassesConnectionManager
 ) : ViewModel() {
 
     companion object {
@@ -45,18 +44,4 @@ class GlassesViewModel @Inject constructor(
     fun connectToDevice(address: String) = connectionManager.connectToDevice(address)
     fun removePersistedDevice() = connectionManager.removePersistedDevice()
     fun ensureAutoReconnect() = connectionManager.ensureAutoReconnect()
-    
-    /**
-     * Enable or disable PipeCat integration for glasses
-     */
-    fun setPipeCatIntegrationEnabled(enabled: Boolean) {
-        glassesPipeCatBridge?.setGlassesIntegrationEnabled(enabled)
-    }
-    
-    /**
-     * Check if PipeCat integration is available
-     */
-    fun isPipeCatIntegrationAvailable(): Boolean {
-        return glassesPipeCatBridge != null
-    }
 }

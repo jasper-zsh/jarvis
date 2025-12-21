@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import pro.sihao.jarvis.features.realtime.presentation.viewmodel.PipeCatViewModel
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
-import pro.sihao.jarvis.platform.android.audio.AudioRoutingStatus
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.ChatModeSelector
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.BotIndicator
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.AudioIndicator
@@ -55,14 +54,11 @@ fun RealTimeCallScreen(
                     }
                     pro.sihao.jarvis.core.domain.model.ChatMode.REALTIME -> pipeCatViewModel.switchToRealtimeMode()
                     pro.sihao.jarvis.core.domain.model.ChatMode.GLASSES -> {
-                        if (uiState.glassesConnected) {
-                            pipeCatViewModel.switchToGlassesMode()
-                            // Navigation to Glasses tab handled by NavigationManager in ViewModel
-                        }
+                        pipeCatViewModel.switchToGlassesMode()
+                        // Navigation to Glasses tab handled by NavigationManager in ViewModel
                     }
                 }
             },
-            glassesConnected = uiState.glassesConnected,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -110,7 +106,6 @@ fun RealTimeCallScreen(
 private fun CallHeader(
     currentMode: pro.sihao.jarvis.core.domain.model.ChatMode,
     onModeSelected: (pro.sihao.jarvis.core.domain.model.ChatMode) -> Unit,
-    glassesConnected: Boolean,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -135,7 +130,6 @@ private fun CallHeader(
             ChatModeSelector(
                 currentMode = currentMode,
                 onModeSelected = onModeSelected,
-                glassesConnected = glassesConnected,
                 modifier = Modifier.fillMaxWidth(0.8f)
             )
         }

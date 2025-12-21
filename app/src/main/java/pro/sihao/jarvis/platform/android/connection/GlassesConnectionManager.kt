@@ -16,7 +16,6 @@ import androidx.core.content.ContextCompat
 import com.rokid.cxr.client.extend.CxrApi
 import com.rokid.cxr.client.extend.callbacks.BluetoothStatusCallback
 import com.rokid.cxr.client.utils.ValueUtil
-import com.rokid.cxr.client.extend.listeners.AudioStreamListener
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,35 +25,23 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.Date
 import pro.sihao.jarvis.core.data.storage.GlassesPreferences
-import pro.sihao.jarvis.core.data.storage.MediaStorageManager
 import pro.sihao.jarvis.core.domain.model.GlassesConnectionStatus
 import pro.sihao.jarvis.core.domain.model.RokidGlassesDevice
-import pro.sihao.jarvis.core.domain.model.ContentType
-import pro.sihao.jarvis.core.domain.model.Message
-import pro.sihao.jarvis.core.domain.repository.MessageRepository
-import pro.sihao.jarvis.core.domain.service.PipeCatService
-import kotlinx.coroutines.flow.first
 
 /**
- * Headless manager that keeps glasses connection alive in the background and auto-reconnects
- * to persisted devices when possible.
+ * Simplified manager that handles glasses Bluetooth connection as a standard audio device.
+ *
+ * After refactoring, glasses now act as a standard Bluetooth SCO headset rather than requiring
+ * custom audio processing. This manager handles device discovery, connection, and basic state management.
+ * Audio routing is handled automatically by Android AudioManager when glasses are connected.
  */
 @Singleton
 class GlassesConnectionManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val preferences: GlassesPreferences,
-    private val mediaStorageManager: MediaStorageManager,
-    private val messageRepository: MessageRepository,
-    private val pipeCatService: PipeCatService
+    private val preferences: GlassesPreferences
 ) {
 
     companion object {
@@ -85,12 +72,6 @@ class GlassesConnectionManager @Inject constructor(
     private var scanJob: Job? = null
     private var connectionTimeoutJob: Job? = null
     private var reconnectJob: Job? = null
-    private var currentAudioJob: Job? = null
-    private var audioBuffer = mutableListOf<Short>()
-    private var isSpeechActive = false
-    private var utteranceStartTs: Long = 0L
-    private var streamCodecType: Int = 1
-    private var streamType: String? = null
     private val discoveredDevices = mutableMapOf<String, BluetoothDevice>()
     private val bondedDevices = mutableMapOf<String, BluetoothDevice>()
     private var currentCallback: BluetoothStatusCallback? = null
@@ -164,148 +145,7 @@ class GlassesConnectionManager @Inject constructor(
         }
     }
 
-    // Audio stream listener for Rokid glasses
-    private val audioStreamListener = object : AudioStreamListener {
-        override fun onStartAudioStream(codecType: Int, streamType: String?) {
-            streamCodecType = codecType
-            this@GlassesConnectionManager.streamType = streamType
-            if (codecType != 1) {
-                // Fallback to PCM if unsupported codec announced
-                CxrApi.getInstance().closeAudioRecord(streamType)
-                CxrApi.getInstance().openAudioRecord(1, streamType)
-                streamCodecType = 1
-            }
-            resetAudioBuffer()
-        }
-
-        override fun onAudioStream(data: ByteArray?, offset: Int, length: Int) {
-            if (data == null || streamCodecType != 1) return // handle only PCM
-            
-            // Convert little-endian 16-bit PCM to short samples
-            val buf = ByteBuffer.wrap(data, offset, length).order(ByteOrder.LITTLE_ENDIAN)
-            val samples = ShortArray(length / 2)
-            buf.asShortBuffer().get(samples)
-
-            // Add all audio samples to buffer without VAD filtering
-            audioBuffer.addAll(samples.toList())
-            
-            // Auto-finalize utterance after a reasonable duration (e.g., 3 seconds of audio)
-            if (audioBuffer.size >= 16000 * 3) { // 3 seconds at 16kHz
-                finalizeUtterance()
-            }
-        }
-    }
-
-    private fun resetAudioBuffer() {
-        audioBuffer.clear()
-        isSpeechActive = false
-        utteranceStartTs = 0L
-    }
-
-    private fun finalizeUtterance() {
-        val samples = audioBuffer.toShortArray()
-        resetAudioBuffer()
-        if (samples.isEmpty()) return
-        currentAudioJob?.cancel()
-        currentAudioJob = scope.launch {
-            try {
-                val file = mediaStorageManager.createVoiceFile("wav")
-                // Use standard sample rate of 16kHz since we no longer have VAD instance
-                val sampleRate = 16000
-                writeWavFile(file, samples, sampleRate)
-                val durationMs = samples.size * 1000L / sampleRate
-                val voiceMessage = Message(
-                    content = "Glasses voice command",
-                    timestamp = Date(),
-                    isFromUser = true,
-                    contentType = ContentType.VOICE,
-                    mediaUrl = file.absolutePath,
-                    duration = durationMs,
-                    mediaSize = file.length()
-                )
-                messageRepository.insertMessage(voiceMessage)
-                val history = messageRepository.getRecentMessages(50).firstOrNull() ?: emptyList()
-                pipeCatService.sendMediaMessage(
-                    message = voiceMessage.content,
-                    mediaMessage = voiceMessage,
-                    conversationHistory = history + voiceMessage
-                ).collect { event ->
-                    when (event) {
-                        is pro.sihao.jarvis.core.domain.model.PipeCatEvent.TextResponsePartial -> {
-                            // ignore partials for now
-                        }
-                        is pro.sihao.jarvis.core.domain.model.PipeCatEvent.TextResponseComplete -> {
-                            val aiMessage = Message(
-                                content = event.content,
-                                timestamp = Date(),
-                                isFromUser = false
-                            )
-                            messageRepository.insertMessage(aiMessage)
-                            if (_connectionState.value.connectionStatus == GlassesConnectionStatus.CONNECTED) {
-                                runCatching { CxrApi.getInstance().sendTtsContent(event.content) }
-                            }
-
-                            // Note: PipeCat integration will be handled by the GlassesPipeCatBridge
-                        }
-                        is pro.sihao.jarvis.core.domain.model.PipeCatEvent.Error -> {
-                            _connectionState.update {
-                                it.copy(errorMessage = "Voice handling failed: ${event.message}")
-                            }
-                        }
-                        is pro.sihao.jarvis.core.domain.model.PipeCatEvent.RequestCanceled -> {
-                            // no-op
-                        }
-                        else -> {
-                            // Handle other PipeCat events or ignore them
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                _connectionState.update { it.copy(errorMessage = "Failed to process glasses audio: ${e.message}") }
-            }
-        }
-    }
-
-    private fun writeWavFile(file: File, samples: ShortArray, sampleRate: Int) {
-        // Simple PCM 16-bit mono WAV writer
-        val byteBuffer = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-        samples.forEach { byteBuffer.putShort(it) }
-        val data = byteBuffer.array()
-        val totalDataLen = 36 + data.size
-        val byteRate = sampleRate * 2
-
-        FileOutputStream(file).use { out ->
-            out.write(byteArrayOf('R'.code.toByte(), 'I'.code.toByte(), 'F'.code.toByte(), 'F'.code.toByte()))
-            out.write(intToLittleEndian(totalDataLen))
-            out.write(byteArrayOf('W'.code.toByte(), 'A'.code.toByte(), 'V'.code.toByte(), 'E'.code.toByte()))
-            out.write(byteArrayOf('f'.code.toByte(), 'm'.code.toByte(), 't'.code.toByte(), ' '.code.toByte()))
-            out.write(intToLittleEndian(16)) // Subchunk1Size for PCM
-            out.write(shortToLittleEndian(1)) // AudioFormat PCM
-            out.write(shortToLittleEndian(1)) // NumChannels mono
-            out.write(intToLittleEndian(sampleRate))
-            out.write(intToLittleEndian(byteRate))
-            out.write(shortToLittleEndian(2)) // Block align
-            out.write(shortToLittleEndian(16)) // Bits per sample
-            out.write(byteArrayOf('d'.code.toByte(), 'a'.code.toByte(), 't'.code.toByte(), 'a'.code.toByte()))
-            out.write(intToLittleEndian(data.size))
-            out.write(data)
-        }
-    }
-
-    private fun intToLittleEndian(value: Int): ByteArray =
-        byteArrayOf(
-            (value and 0xff).toByte(),
-            (value shr 8 and 0xff).toByte(),
-            (value shr 16 and 0xff).toByte(),
-            (value shr 24 and 0xff).toByte()
-        )
-
-    private fun shortToLittleEndian(value: Int): ByteArray =
-        byteArrayOf(
-            (value and 0xff).toByte(),
-            (value shr 8 and 0xff).toByte()
-        )
-
+  
     @SuppressLint("MissingPermission")
     fun startScan() {
         if (!hasPermissions()) return
@@ -547,7 +387,6 @@ class GlassesConnectionManager @Inject constructor(
             }
         }
         CxrApi.getInstance().connectBluetooth(context, socketUuid, macAddress, currentCallback)
-        CxrApi.getInstance().setAudioStreamListener(audioStreamListener)
         startConnectionTimeout()
     }
 

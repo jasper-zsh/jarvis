@@ -1,6 +1,10 @@
 package pro.sihao.jarvis.features.realtime.data.service
 
 import android.content.Context
+import android.media.AudioManager
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothProfile
 import android.util.Log
 import ai.pipecat.client.PipecatClient
 import ai.pipecat.client.PipecatClientOptions
@@ -8,6 +12,7 @@ import ai.pipecat.client.PipecatEventCallbacks
 import ai.pipecat.client.result.Future
 import ai.pipecat.client.result.RTVIError
 import ai.pipecat.client.small_webrtc_transport.SmallWebRTCTransport
+import ai.pipecat.client.transport.MsgServerToClient
 import ai.pipecat.client.types.APIRequest
 import ai.pipecat.client.types.BotOutputData
 import ai.pipecat.client.types.BotReadyData
@@ -19,9 +24,9 @@ import ai.pipecat.client.types.Tracks
 import ai.pipecat.client.types.Transcript
 import ai.pipecat.client.types.TransportState as PipecatTransportState
 import ai.pipecat.client.types.Value
+import com.rokid.cxr.client.extend.CxrApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import pro.sihao.jarvis.platform.android.audio.AudioRoutingManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainCoroutineDispatcher
@@ -43,6 +48,7 @@ import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
 import pro.sihao.jarvis.core.domain.model.TransportState as AppTransportState
 import pro.sihao.jarvis.core.domain.service.PipeCatService
+import pro.sihao.jarvis.platform.network.webrtc.PipeCatConnectionManager
 import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
@@ -50,11 +56,14 @@ import javax.inject.Singleton
 
 /**
  * Implementation of PipeCatService using PipeCat SDK
+ *
+ * This service handles real-time voice communication with automatic Bluetooth audio routing.
+ * When glasses or other Bluetooth headsets are connected, it configures Android AudioManager
+ * to use Bluetooth SCO for voice-quality audio input/output.
  */
 @Singleton
 class PipeCatServiceImpl @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val audioRoutingManager: AudioRoutingManager
+    @ApplicationContext private val context: Context
 ) : PipeCatService {
 
     companion object {
@@ -62,10 +71,15 @@ class PipeCatServiceImpl @Inject constructor(
     }
 
     private var pipecatClient: PipecatClient<*, *>? = null
+    private val audioManager: AudioManager by lazy {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
 
     // Audio input management
     private var audioInputCallback: ((ByteArray) -> Unit)? = null
     private var usingGlassesAudio = false
+    private var originalAudioMode: Int = AudioManager.MODE_NORMAL
+    private var originalSpeakerphoneOn: Boolean = false
 
     // Extension function for error handling
     private fun <E> Future<E, RTVIError>.displayErrors() = withErrorCallback { error ->
@@ -86,6 +100,97 @@ class PipeCatServiceImpl @Inject constructor(
 
     // Real-time session management
     private var isSessionActive = false
+
+    /**
+     * Check if Bluetooth SCO (Synchronous Connection-Oriented) headset is available
+     */
+    private fun isBluetoothHeadsetAvailable(): Boolean {
+        return try {
+            audioManager.isBluetoothScoAvailableOffCall
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking Bluetooth SCO availability", e)
+            false
+        }
+    }
+
+    /**
+     * Check if any Bluetooth headset is connected (including glasses)
+     */
+    private fun isBluetoothHeadsetConnected(): Boolean {
+        return try {
+            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+            bluetoothAdapter?.let { adapter ->
+                // Check if there are any connected Bluetooth devices that could be headsets
+                adapter.bondedDevices.any { device ->
+                    // Check for common headset/profile characteristics or if glasses are connected
+                    device.bluetoothClass?.let { deviceClass ->
+                        val deviceClassValue = deviceClass.deviceClass
+                        // Audio headset device class
+                        deviceClassValue == 0x2404 ||
+                        deviceClassValue == 0x2408 ||
+                        deviceClassValue == 0x240C ||
+                        device.name?.contains("Glasses", ignoreCase = true) == true
+                    } ?: false
+                }
+            } ?: false
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking Bluetooth headset connection", e)
+            false
+        }
+    }
+
+    /**
+     * Configure audio routing for Bluetooth headset when available
+     */
+    private fun configureBluetoothAudio() {
+        try {
+            if (isBluetoothHeadsetConnected() && isBluetoothHeadsetAvailable()) {
+                // Save current audio state
+                originalAudioMode = audioManager.mode
+                originalSpeakerphoneOn = audioManager.isSpeakerphoneOn
+
+                Log.i(TAG, "Configuring Bluetooth SCO audio for voice communication")
+
+                // Start Bluetooth SCO for voice communication
+                audioManager.startBluetoothSco()
+
+                // Wait for SCO to establish
+                Thread.sleep(1000)
+
+                // Set communication mode
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                audioManager.isSpeakerphoneOn = false // Route through Bluetooth, not speaker
+
+                Log.i(TAG, "Bluetooth SCO audio configured successfully")
+            } else {
+                Log.w(TAG, "Bluetooth headset not connected or SCO not available, using default audio routing")
+                // Still set communication mode for better voice input handling
+                originalAudioMode = audioManager.mode
+                originalSpeakerphoneOn = audioManager.isSpeakerphoneOn
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error configuring Bluetooth audio", e)
+        }
+    }
+
+    /**
+     * Restore original audio routing
+     */
+    private fun restoreAudioRouting() {
+        try {
+            // Stop Bluetooth SCO if it was started
+            audioManager.stopBluetoothSco()
+
+            // Restore original audio mode and speaker state
+            audioManager.mode = originalAudioMode
+            audioManager.isSpeakerphoneOn = originalSpeakerphoneOn
+
+            Log.i(TAG, "Audio routing restored to original state")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error restoring audio routing", e)
+        }
+    }
 
     override suspend fun sendTextMessage(
         message: String,
@@ -241,9 +346,10 @@ class PipeCatServiceImpl @Inject constructor(
                 stopRealtimeSession()
             }
 
-            // Enable speaker mode for audio output
-            audioRoutingManager.setSpeakerMode(true)
-            Log.i(TAG, "Speaker mode enabled for PipeCat session")
+            // Configure Bluetooth audio if available (glasses as headset)
+            val bluetoothConnected = isBluetoothHeadsetConnected()
+            configureBluetoothAudio()
+            Log.i(TAG, "PipeCat session started - ${if (bluetoothConnected) "Bluetooth headset connected, using Bluetooth audio" else "using default audio routing"}")
 
             // Update connection state to connecting
             _connectionState.update {
@@ -307,9 +413,13 @@ class PipeCatServiceImpl @Inject constructor(
                     // TODO: Implement proper audio level extraction from PipecatMetrics
                 }
 
-                override fun onBotOutput(data: BotOutputData) {
-                    Log.i(TAG, "Bot output: $data")
-                    // Handle bot output if needed
+                override fun onBotTranscript(text: String) {
+                    Log.i(TAG, "Bot transcript: $text")
+                }
+
+                override fun onBotLLMText(data: MsgServerToClient.Data.BotLLMTextData) {
+                    Log.i(TAG, "Bot LLM text: $data")
+                    CxrApi.getInstance().sendTtsContent(data.text)
                 }
 
                 override fun onUserTranscript(data: Transcript) {
@@ -318,6 +428,7 @@ class PipeCatServiceImpl @Inject constructor(
                         text = data.text,
                         timestamp = Date()
                     )
+                    CxrApi.getInstance().sendAsrContent(data.text)
                 }
 
                 override fun onBotStartedSpeaking() {
@@ -406,6 +517,7 @@ class PipeCatServiceImpl @Inject constructor(
                     CoroutineScope(Dispatchers.IO).launch {
                         this@PipeCatServiceImpl.stopRealtimeSession()
                     }
+                    CxrApi.getInstance().sendExitEvent()
                 }
 
             })
@@ -481,9 +593,9 @@ class PipeCatServiceImpl @Inject constructor(
                 pipecatClient = null
             }
 
-            // Disable speaker mode when session ends
-            audioRoutingManager.setSpeakerMode(false)
-            Log.i(TAG, "Speaker mode disabled after PipeCat session end")
+            // Restore original audio routing
+            restoreAudioRouting()
+            Log.i(TAG, "PipeCat session ended - audio routing restored")
 
             _connectionState.update {
                 PipeCatConnectionState()
@@ -565,11 +677,8 @@ class PipeCatServiceImpl @Inject constructor(
     }
 
     override fun setSpeakerMode(enabled: Boolean) {
-        try {
-            audioRoutingManager.setSpeakerMode(enabled)
-            Log.i(TAG, "Speaker mode ${if (enabled) "enabled" else "disabled"}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting speaker mode", e)
-        }
+        // Speaker mode is now handled by Android AudioManager automatically
+        // This method is kept for interface compatibility but no longer needed
+        Log.i(TAG, "Speaker mode request ignored - handled by Android AudioManager automatically")
     }
 }

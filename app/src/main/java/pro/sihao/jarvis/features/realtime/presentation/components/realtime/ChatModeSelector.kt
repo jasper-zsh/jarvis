@@ -25,8 +25,7 @@ import pro.sihao.jarvis.core.domain.model.ChatMode
 fun ChatModeSelector(
     currentMode: ChatMode,
     onModeSelected: (ChatMode) -> Unit,
-    modifier: Modifier = Modifier,
-    glassesConnected: Boolean = false
+    modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -54,7 +53,7 @@ fun ChatModeSelector(
                 ModeTab(
                     mode = mode,
                     isSelected = mode == currentMode,
-                    isAvailable = mode != ChatMode.GLASSES || glassesConnected,
+                    isAvailable = true,
                     onClick = { onModeSelected(mode) },
                     modifier = Modifier.weight(1f)
                 )
@@ -160,8 +159,7 @@ private fun ModeTab(
 fun CompactChatModeSelector(
     currentMode: ChatMode,
     onModeSelected: (ChatMode) -> Unit,
-    modifier: Modifier = Modifier,
-    glassesConnected: Boolean = false
+    modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -215,7 +213,7 @@ fun CompactChatModeSelector(
             onDismissRequest = { expanded = false }
         ) {
             ChatMode.values().forEach { mode ->
-                val isAvailable = mode != ChatMode.GLASSES || glassesConnected
+                val isAvailable = true
                 
                 DropdownMenuItem(
                     text = {

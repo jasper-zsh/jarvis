@@ -167,43 +167,6 @@ fun GlassesScreen(
                     }
                 }
             }
-    
-            // PipeCat Integration Section
-            if (viewModel.isPipeCatIntegrationAvailable()) {
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("Real-time Voice Integration", fontWeight = FontWeight.Bold)
-                            Text("Enable real-time voice chat through glasses", style = MaterialTheme.typography.bodySmall)
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = { viewModel.setPipeCatIntegrationEnabled(true) },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Enable")
-                                }
-                                
-                                OutlinedButton(
-                                    onClick = {
-                                        // Navigation to Chat tab handled by NavigationManager
-                                        // Could trigger through event or user action
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Voice Mode")
-                                }
-                            }
-                    }
-                }
-            }
-        }
     }
 }
 

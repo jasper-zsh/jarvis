@@ -2,6 +2,8 @@ package pro.sihao.jarvis.platform.network.webrtc
 
 import android.content.Context
 import android.util.Log
+import com.rokid.cxr.client.extend.CxrApi
+import com.rokid.cxr.client.utils.ValueUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +21,7 @@ import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
 import pro.sihao.jarvis.core.domain.repository.MessageRepository
 import pro.sihao.jarvis.core.domain.service.PipeCatService
+import pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager
 import java.util.Date
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,7 +33,8 @@ import javax.inject.Singleton
 class PipeCatConnectionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val pipeCatService: PipeCatService,
-    private val messageRepository: MessageRepository
+    private val messageRepository: MessageRepository,
+    private val configurationManager: ConfigurationManager
 ) {
     companion object {
         private const val TAG = "PipeCatConnectionManager"
@@ -47,6 +51,18 @@ class PipeCatConnectionManager @Inject constructor(
         scope.launch {
             pipeCatService.connectionState.collect { serviceState ->
                 _connectionState.update { serviceState }
+            }
+        }
+        CxrApi.getInstance().setSceneStatusUpdateListener {
+            if (it.isAiAssistRunning && !connectionState.value.isConnected) {
+                scope.launch {
+                    connect(configurationManager.getCurrentConfig())
+                }
+            }
+            if (!it.isAiAssistRunning && connectionState.value.isConnected) {
+                scope.launch {
+                    disconnect()
+                }
             }
         }
     }
@@ -191,6 +207,7 @@ class PipeCatConnectionManager @Inject constructor(
                 _connectionState.update {
                     it.copy(botReady = true)
                 }
+                CxrApi.getInstance().sendAsrContent("")
             }
 
             // New text chat events

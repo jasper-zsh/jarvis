@@ -13,7 +13,6 @@ import pro.sihao.jarvis.core.domain.service.PipeCatService
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.platform.network.webrtc.PipeCatConnectionManager
-import pro.sihao.jarvis.features.realtime.data.bridge.GlassesPipeCatBridge
 import java.util.Date
 import javax.inject.Inject
 

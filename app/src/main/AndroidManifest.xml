@@ -42,7 +42,7 @@
         android:usesCleartextTraffic="true">
 
         <service
-            android:name=".service.GlassesConnectionService"
+            android:name=".platform.android.service.GlassesConnectionService"
             android:enabled="true"
             android:exported="false" />
 

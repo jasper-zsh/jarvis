@@ -6,12 +6,12 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import pro.sihao.jarvis.connection.GlassesConnectionManager
-import pro.sihao.jarvis.data.audio.AudioRoutingManager
-import pro.sihao.jarvis.data.bridge.GlassesPipeCatBridge
-import pro.sihao.jarvis.data.webrtc.PipeCatConnectionManager
-import pro.sihao.jarvis.domain.repository.MessageRepository
-import pro.sihao.jarvis.domain.service.PipeCatService
+import pro.sihao.jarvis.platform.android.connection.GlassesConnectionManager
+import pro.sihao.jarvis.platform.android.audio.AudioRoutingManager
+import pro.sihao.jarvis.features.realtime.data.bridge.GlassesPipeCatBridge
+import pro.sihao.jarvis.platform.network.webrtc.PipeCatConnectionManager
+import pro.sihao.jarvis.core.domain.repository.MessageRepository
+import pro.sihao.jarvis.core.domain.service.PipeCatService
 import javax.inject.Singleton
 
 /**

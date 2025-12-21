@@ -3,7 +3,7 @@ package pro.sihao.jarvis
 import android.app.Application
 import android.content.Intent
 import dagger.hilt.android.HiltAndroidApp
-import pro.sihao.jarvis.data.database.initializer.DatabaseInitializer
+import pro.sihao.jarvis.core.data.database.initializer.DatabaseInitializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

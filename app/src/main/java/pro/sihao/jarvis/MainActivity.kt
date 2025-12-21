@@ -10,10 +10,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
-import pro.sihao.jarvis.ui.screens.SettingsScreen
-import pro.sihao.jarvis.ui.screens.GlassesScreen
-import pro.sihao.jarvis.ui.screens.RealTimeCallScreen
-import pro.sihao.jarvis.ui.theme.JarvisTheme
+import pro.sihao.jarvis.features.settings.presentation.screens.SettingsScreen
+import pro.sihao.jarvis.features.glasses.presentation.screens.GlassesScreen
+import pro.sihao.jarvis.features.realtime.presentation.screens.RealTimeCallScreen
+import pro.sihao.jarvis.core.presentation.theme.JarvisTheme
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {

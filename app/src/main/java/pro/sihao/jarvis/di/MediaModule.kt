@@ -9,8 +9,8 @@ import dagger.hilt.components.SingletonComponent
 import pro.sihao.jarvis.media.PhotoCaptureManager
 import pro.sihao.jarvis.media.VoicePlayer
 import pro.sihao.jarvis.media.VoiceRecorder
-import pro.sihao.jarvis.permission.PermissionManager
-import pro.sihao.jarvis.data.storage.MediaStorageManager
+import pro.sihao.jarvis.platform.android.permission.PermissionManager
+import pro.sihao.jarvis.core.data.storage.MediaStorageManager
 import javax.inject.Singleton
 
 @Module

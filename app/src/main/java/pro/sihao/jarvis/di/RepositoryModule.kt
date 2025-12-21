@@ -4,8 +4,8 @@ import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import pro.sihao.jarvis.data.repository.MessageRepositoryImpl
-import pro.sihao.jarvis.domain.repository.MessageRepository
+import pro.sihao.jarvis.core.data.repository.MessageRepositoryImpl
+import pro.sihao.jarvis.core.domain.repository.MessageRepository
 
 @Module
 @InstallIn(SingletonComponent::class)

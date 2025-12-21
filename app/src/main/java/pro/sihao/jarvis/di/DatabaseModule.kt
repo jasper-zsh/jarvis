@@ -7,7 +7,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import pro.sihao.jarvis.data.database.JarvisDatabase
+import pro.sihao.jarvis.core.data.database.JarvisDatabase
 import javax.inject.Singleton
 
 @Module

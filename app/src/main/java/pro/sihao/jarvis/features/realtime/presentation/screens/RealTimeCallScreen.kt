@@ -31,8 +31,6 @@ import pro.sihao.jarvis.features.realtime.presentation.components.realtime.Audio
 @Composable
 fun RealTimeCallScreen(
     pipeCatViewModel: PipeCatViewModel = hiltViewModel(),
-    onNavigateToTextMode: () -> Unit,
-    onNavigateToGlassesMode: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by pipeCatViewModel.uiState.collectAsState()
@@ -51,12 +49,15 @@ fun RealTimeCallScreen(
             currentMode = uiState.currentMode,
             onModeSelected = { mode ->
                 when (mode) {
-                    pro.sihao.jarvis.core.domain.model.ChatMode.TEXT -> onNavigateToTextMode()
+                    pro.sihao.jarvis.core.domain.model.ChatMode.TEXT -> {
+                        // Text mode navigation now handled by bottom tab navigation
+                        // Users can access settings through the navigation system
+                    }
                     pro.sihao.jarvis.core.domain.model.ChatMode.REALTIME -> pipeCatViewModel.switchToRealtimeMode()
                     pro.sihao.jarvis.core.domain.model.ChatMode.GLASSES -> {
                         if (uiState.glassesConnected) {
                             pipeCatViewModel.switchToGlassesMode()
-                            onNavigateToGlassesMode()
+                            // Navigation to Glasses tab handled by NavigationManager in ViewModel
                         }
                     }
                 }

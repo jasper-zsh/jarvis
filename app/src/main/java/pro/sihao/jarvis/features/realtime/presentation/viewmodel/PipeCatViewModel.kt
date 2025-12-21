@@ -10,13 +10,16 @@ import pro.sihao.jarvis.features.realtime.data.bridge.GlassesPipeCatBridge
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.ChatMode
+import pro.sihao.jarvis.core.presentation.navigation.NavigationManager
+import pro.sihao.jarvis.core.presentation.navigation.TabNavigation
 import javax.inject.Inject
 
 @HiltViewModel
 class PipeCatViewModel @Inject constructor(
     private val pipeCatConnectionManager: PipeCatConnectionManager,
     private val glassesPipeCatBridge: GlassesPipeCatBridge,
-    private val configurationManager: pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager
+    private val configurationManager: pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager,
+    private val navigationManager: NavigationManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PipeCatUiState())
@@ -152,13 +155,15 @@ class PipeCatViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 glassesPipeCatBridge.switchToGlassesMode()
-                _uiState.update { 
+                _uiState.update {
                     it.copy(
                         currentMode = ChatMode.GLASSES
                     )
                 }
+                // Navigate to Glasses tab when switching to glasses mode
+                navigationManager.navigateToTab(TabNavigation.Glasses)
             } catch (e: Exception) {
-                _uiState.update { 
+                _uiState.update {
                     it.copy(errorMessage = "Failed to switch to glasses mode: ${e.message}")
                 }
             }

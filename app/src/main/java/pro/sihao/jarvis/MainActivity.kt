@@ -6,64 +6,27 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
-import pro.sihao.jarvis.features.settings.presentation.screens.SettingsScreen
-import pro.sihao.jarvis.features.glasses.presentation.screens.GlassesScreen
-import pro.sihao.jarvis.features.realtime.presentation.screens.RealTimeCallScreen
+import pro.sihao.jarvis.core.presentation.navigation.BottomTabNavigation
+import pro.sihao.jarvis.core.presentation.navigation.NavigationManager
 import pro.sihao.jarvis.core.presentation.theme.JarvisTheme
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var navigationManager: NavigationManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             JarvisTheme {
-                val navController = rememberNavController()
-
-                NavHost(
-                    navController = navController,
-                    startDestination = "realtime",
+                BottomTabNavigation(
+                    navigationManager = navigationManager,
                     modifier = Modifier.fillMaxSize()
-                ) {
-                    composable("realtime") {
-                        RealTimeCallScreen(
-                            onNavigateToTextMode = {
-                                // Text mode removed - navigate to settings instead
-                                navController.navigate("settings")
-                            },
-                            onNavigateToGlassesMode = {
-                                navController.navigate("glasses")
-                            }
-                        )
-                    }
-                    composable("settings") {
-                        SettingsScreen(
-                            onBackClick = {
-                                navController.popBackStack()
-                            },
-                            onNavigateToGlasses = {
-                                navController.navigate("glasses")
-                            },
-                            onNavigateToRealtime = {
-                                navController.navigate("realtime")
-                            }
-                        )
-                    }
-                    composable("glasses") {
-                        GlassesScreen(
-                            onBackClick = {
-                                navController.popBackStack()
-                            },
-                            onNavigateToRealtime = {
-                                navController.navigate("realtime")
-                            }
-                        )
-                    }
-                }
+                )
             }
         }
     }

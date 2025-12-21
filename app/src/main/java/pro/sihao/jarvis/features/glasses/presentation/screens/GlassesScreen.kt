@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.BluetoothDisabled
@@ -24,13 +23,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,8 +45,6 @@ import pro.sihao.jarvis.features.glasses.presentation.viewmodel.GlassesViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GlassesScreen(
-    onBackClick: () -> Unit,
-    onNavigateToRealtime: () -> Unit = {},
     viewModel: GlassesViewModel = hiltViewModel()
 ) {
     val uiState = viewModel.uiState.collectAsState().value
@@ -83,25 +76,12 @@ fun GlassesScreen(
         it.macAddress ?: it.name
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Rokid Glasses", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
             item {
                 ConnectionStatusCard(
                     isBluetoothEnabled = uiState.isBluetoothEnabled,
@@ -211,13 +191,15 @@ fun GlassesScreen(
                                 }
                                 
                                 OutlinedButton(
-                                    onClick = onNavigateToRealtime,
+                                    onClick = {
+                                        // Navigation to Chat tab handled by NavigationManager
+                                        // Could trigger through event or user action
+                                    },
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Text("Voice Mode")
                                 }
                             }
-                        }
                     }
                 }
             }

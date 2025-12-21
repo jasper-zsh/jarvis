@@ -14,6 +14,7 @@ import pro.sihao.jarvis.core.data.storage.GlassesPreferences
 import pro.sihao.jarvis.core.data.storage.MediaStorageManager
 import pro.sihao.jarvis.core.domain.repository.MessageRepository
 import pro.sihao.jarvis.core.domain.service.PipeCatService
+import pro.sihao.jarvis.core.presentation.navigation.NavigationManager
 import javax.inject.Singleton
 
 @Module
@@ -55,5 +56,11 @@ object PlatformModule {
         @ApplicationContext context: Context
     ): ApikeyEncryption {
         return ApikeyEncryption(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNavigationManager(): NavigationManager {
+        return NavigationManager()
     }
 }

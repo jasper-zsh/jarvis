@@ -41,6 +41,8 @@ class MediaStorageManager(private val context: Context) {
             ContentType.VOICE -> "$uuid$ext"
             ContentType.PHOTO -> "$uuid.$extension"
             ContentType.TEXT -> "$uuid.txt"
+            ContentType.REALTIME_TRANSCRIPT -> "$uuid.txt"
+            ContentType.REALTIME_RESPONSE -> "$uuid.txt"
         }
     }
 
@@ -102,6 +104,8 @@ class MediaStorageManager(private val context: Context) {
             ContentType.VOICE -> File(voiceDir, fileName)
             ContentType.PHOTO -> File(photoDir, fileName)
             ContentType.TEXT -> File(mediaDir, fileName)
+            ContentType.REALTIME_TRANSCRIPT -> File(mediaDir, fileName)
+            ContentType.REALTIME_RESPONSE -> File(mediaDir, fileName)
         }
     }
 

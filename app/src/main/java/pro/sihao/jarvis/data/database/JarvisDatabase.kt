@@ -7,28 +7,20 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import android.content.Context
 import pro.sihao.jarvis.data.database.dao.MessageDao
-import pro.sihao.jarvis.data.database.dao.LLMProviderDao
-import pro.sihao.jarvis.data.database.dao.ModelConfigDao
 import pro.sihao.jarvis.data.database.entity.MessageEntity
-import pro.sihao.jarvis.data.database.entity.LLMProviderEntity
-import pro.sihao.jarvis.data.database.entity.ModelConfigEntity
 import pro.sihao.jarvis.data.database.converters.DatabaseConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
-        MessageEntity::class,
-        LLMProviderEntity::class,
-        ModelConfigEntity::class
+        MessageEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(DatabaseConverters::class)
 abstract class JarvisDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
-    abstract fun llmProviderDao(): LLMProviderDao
-    abstract fun modelConfigDao(): ModelConfigDao
 
     companion object {
         @Volatile
@@ -115,6 +107,15 @@ abstract class JarvisDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 4 to 5 - Remove LLM provider and model config tables
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Drop LLM-related tables
+                database.execSQL("DROP TABLE IF EXISTS `model_configs`")
+                database.execSQL("DROP TABLE IF EXISTS `llm_providers`")
+            }
+        }
+
         fun getDatabase(context: Context): JarvisDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -122,7 +123,7 @@ abstract class JarvisDatabase : RoomDatabase() {
                     JarvisDatabase::class.java,
                     "jarvis_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

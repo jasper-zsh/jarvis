@@ -41,7 +41,7 @@ import pro.sihao.jarvis.domain.model.RokidGlassesDevice
 import pro.sihao.jarvis.domain.model.ContentType
 import pro.sihao.jarvis.domain.model.Message
 import pro.sihao.jarvis.domain.repository.MessageRepository
-import pro.sihao.jarvis.domain.service.LLMService
+import pro.sihao.jarvis.domain.service.PipeCatService
 import kotlinx.coroutines.flow.first
 
 /**
@@ -54,7 +54,7 @@ class GlassesConnectionManager @Inject constructor(
     private val preferences: GlassesPreferences,
     private val mediaStorageManager: MediaStorageManager,
     private val messageRepository: MessageRepository,
-    private val llmService: LLMService
+    private val pipeCatService: PipeCatService
 ) {
 
     companion object {
@@ -225,16 +225,16 @@ class GlassesConnectionManager @Inject constructor(
                 )
                 messageRepository.insertMessage(voiceMessage)
                 val history = messageRepository.getRecentMessages(50).firstOrNull() ?: emptyList()
-                llmService.sendMessage(
+                pipeCatService.sendMediaMessage(
                     message = voiceMessage.content,
-                    conversationHistory = history + voiceMessage,
-                    mediaMessage = voiceMessage
+                    mediaMessage = voiceMessage,
+                    conversationHistory = history + voiceMessage
                 ).collect { event ->
                     when (event) {
-                        is pro.sihao.jarvis.domain.service.LLMStreamEvent.Partial -> {
+                        is pro.sihao.jarvis.domain.model.PipeCatEvent.TextResponsePartial -> {
                             // ignore partials for now
                         }
-                        is pro.sihao.jarvis.domain.service.LLMStreamEvent.Complete -> {
+                        is pro.sihao.jarvis.domain.model.PipeCatEvent.TextResponseComplete -> {
                             val aiMessage = Message(
                                 content = event.content,
                                 timestamp = Date(),
@@ -244,14 +244,19 @@ class GlassesConnectionManager @Inject constructor(
                             if (_connectionState.value.connectionStatus == GlassesConnectionStatus.CONNECTED) {
                                 runCatching { CxrApi.getInstance().sendTtsContent(event.content) }
                             }
+
+                            // Note: PipeCat integration will be handled by the GlassesPipeCatBridge
                         }
-                        is pro.sihao.jarvis.domain.service.LLMStreamEvent.Error -> {
+                        is pro.sihao.jarvis.domain.model.PipeCatEvent.Error -> {
                             _connectionState.update {
-                                it.copy(errorMessage = "Voice handling failed: ${event.throwable.message}")
+                                it.copy(errorMessage = "Voice handling failed: ${event.message}")
                             }
                         }
-                        is pro.sihao.jarvis.domain.service.LLMStreamEvent.Canceled -> {
+                        is pro.sihao.jarvis.domain.model.PipeCatEvent.RequestCanceled -> {
                             // no-op
+                        }
+                        else -> {
+                            // Handle other PipeCat events or ignore them
                         }
                     }
                 }

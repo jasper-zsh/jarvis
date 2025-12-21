@@ -15,4 +15,11 @@ interface MessageRepository {
     suspend fun clearAllMessages()
     suspend fun clearConversation(conversationId: Long? = null)
     suspend fun getMessageCount(): Int
+    
+    // Real-time message handling methods
+    suspend fun insertRealtimeMessage(message: Message): Long = insertMessage(message)
+    suspend fun getRealtimeMessages(): Flow<List<Message>> = getAllMessages()
+    suspend fun markRealtimeSessionComplete(sessionId: String) {
+        // Default implementation - can be overridden in implementation
+    }
 }

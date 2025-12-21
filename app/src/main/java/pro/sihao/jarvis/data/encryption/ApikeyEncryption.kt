@@ -48,4 +48,21 @@ class ApikeyEncryption @Inject constructor(
                 .apply()
         }
     }
+
+    // New methods for easier API key management
+    fun saveApiKey(apiKey: String) {
+        encryptionPrefs.edit()
+            .putString("api_key", apiKey)
+            .apply()
+    }
+
+    fun getApiKey(): String? {
+        return encryptionPrefs.getString("api_key", null)
+    }
+
+    fun clearApiKey() {
+        encryptionPrefs.edit()
+            .remove("api_key")
+            .apply()
+    }
 }

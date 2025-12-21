@@ -5,7 +5,9 @@ import java.util.Date
 enum class ContentType {
     TEXT,
     VOICE,
-    PHOTO
+    PHOTO,
+    REALTIME_TRANSCRIPT,
+    REALTIME_RESPONSE
 }
 
 data class Message(

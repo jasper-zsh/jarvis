@@ -1,6 +1,7 @@
 package pro.sihao.jarvis.data.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import pro.sihao.jarvis.data.database.JarvisDatabase
 import pro.sihao.jarvis.data.database.entity.MessageEntity
@@ -12,7 +13,8 @@ import javax.inject.Singleton
 
 @Singleton
 class MessageRepositoryImpl @Inject constructor(
-    private val database: JarvisDatabase
+    private val database: JarvisDatabase,
+    private val pipeCatService: pro.sihao.jarvis.domain.service.PipeCatService? = null
 ) : MessageRepository {
 
     override fun getAllMessages(): Flow<List<Message>> {
@@ -34,7 +36,19 @@ class MessageRepositoryImpl @Inject constructor(
 
     override suspend fun insertMessage(message: Message): Long {
         val entity = MessageMapper.toEntity(message)
-        return database.messageDao().insertMessage(entity)
+        val messageId = database.messageDao().insertMessage(entity)
+        
+        // Notify PipeCat service of new message for real-time processing
+        pipeCatService?.let { service ->
+            try {
+                // This could be used to sync messages to real-time session
+                // Implementation depends on specific PipeCat integration requirements
+            } catch (e: Exception) {
+                // Log error but don't fail main message insertion
+            }
+        }
+        
+        return messageId
     }
 
     override suspend fun upsertMessage(message: Message): Long {
@@ -68,5 +82,13 @@ class MessageRepositoryImpl @Inject constructor(
 
     override suspend fun getMessageCount(): Int {
         return database.messageDao().getMessageCount()
+    }
+    
+    /**
+     * Get recent messages for real-time processing
+     */
+    suspend fun getRecentMessagesForRealtime(limit: Int = 10): List<Message> {
+        val entities = database.messageDao().getRecentMessages(limit).first()
+        return MessageMapper.toDomainList(entities)
     }
 }

@@ -26,6 +26,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -50,6 +51,7 @@ import pro.sihao.jarvis.ui.viewmodel.GlassesViewModel
 @Composable
 fun GlassesScreen(
     onBackClick: () -> Unit,
+    onNavigateToRealtime: () -> Unit = {},
     viewModel: GlassesViewModel = hiltViewModel()
 ) {
     val uiState = viewModel.uiState.collectAsState().value
@@ -180,6 +182,40 @@ fun GlassesScreen(
                             Text(saved.name)
                             Button(onClick = { viewModel.removePersistedDevice() }) {
                                 Text("Remove saved device")
+                            }
+                        }
+                    }
+                }
+            }
+    
+            // PipeCat Integration Section
+            if (viewModel.isPipeCatIntegrationAvailable()) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Real-time Voice Integration", fontWeight = FontWeight.Bold)
+                            Text("Enable real-time voice chat through glasses", style = MaterialTheme.typography.bodySmall)
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { viewModel.setPipeCatIntegrationEnabled(true) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Enable")
+                                }
+                                
+                                OutlinedButton(
+                                    onClick = onNavigateToRealtime,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Voice Mode")
+                                }
                             }
                         }
                     }

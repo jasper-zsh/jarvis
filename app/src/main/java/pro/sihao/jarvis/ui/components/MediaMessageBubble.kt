@@ -67,6 +67,12 @@ fun MediaMessageBubble(
                     message = message,
                     onPhotoClick = onPhotoClick
                 )
+                ContentType.REALTIME_TRANSCRIPT -> TextMessageContent(
+                    message = message.copy(content = "[Transcript] ${message.content}")
+                )
+                ContentType.REALTIME_RESPONSE -> TextMessageContent(
+                    message = message.copy(content = "[Response] ${message.content}")
+                )
             }
         }
 

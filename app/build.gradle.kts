@@ -74,7 +74,9 @@ dependencies {
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.dashscope)
     implementation("com.rokid.cxr:client-m:1.0.1-20250812.080117-2")
-    implementation("ai.pipecat:small-webrtc-transport:0.3.7")
+    implementation(libs.pipecat.small.webrtc.transport)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.accompanist.permissions)
 
     // Dependency Injection - Hilt
     implementation(libs.hilt.android)

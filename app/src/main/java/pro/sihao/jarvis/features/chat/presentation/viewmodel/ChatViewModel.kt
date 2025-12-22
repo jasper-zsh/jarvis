@@ -12,7 +12,6 @@ import pro.sihao.jarvis.core.domain.repository.MessageRepository
 import pro.sihao.jarvis.core.domain.service.PipeCatService
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
-import pro.sihao.jarvis.platform.network.webrtc.PipeCatConnectionManager
 import java.util.Date
 import javax.inject.Inject
 
@@ -23,8 +22,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val pipeCatService: PipeCatService,
-    private val networkMonitor: NetworkMonitor,
-    private val pipeCatConnectionManager: PipeCatConnectionManager
+    private val networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())

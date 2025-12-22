@@ -101,13 +101,7 @@ class PipeCatServiceManager @Inject constructor(
         }
     }
 
-    /**
-     * Start the PipeCat foreground service (向后兼容)
-     */
-    fun startService() {
-        startPersistentService()
-    }
-
+  
     /**
      * Stop the PipeCat foreground service
      */

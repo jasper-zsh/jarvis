@@ -143,7 +143,7 @@ class PipeCatViewModel @Inject constructor(
      */
     fun startService() {
         try {
-            pipeCatServiceManager.startService()
+            pipeCatServiceManager.startPersistentService()
         } catch (e: Exception) {
             _uiState.update {
                 it.copy(errorMessage = "Failed to start service: ${e.message}")

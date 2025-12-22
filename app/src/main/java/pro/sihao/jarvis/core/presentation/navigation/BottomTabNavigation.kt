@@ -26,6 +26,7 @@ import androidx.navigation.compose.rememberNavController
 import pro.sihao.jarvis.features.glasses.presentation.screens.GlassesScreen
 import pro.sihao.jarvis.features.realtime.presentation.screens.RealTimeCallScreen
 import pro.sihao.jarvis.features.settings.presentation.screens.SettingsScreen
+import pro.sihao.jarvis.core.presentation.navigation.TabNavigation
 
 /**
  * Bottom tab navigation component that provides tab switching between primary modules.
@@ -99,6 +100,17 @@ fun BottomTabNavigation(
                 }
                 composable(TabNavigation.Glasses.route) {
                     GlassesScreen()
+                }
+                composable(TabNavigation.Settings.route) {
+                    SettingsScreen(
+                        onBackClick = { /* No back action needed for tab */ },
+                        onNavigateToGlasses = {
+                            navigationManager.navigateToTab(TabNavigation.Glasses)
+                        },
+                        onNavigateToRealtime = {
+                            navigationManager.navigateToTab(TabNavigation.Chat)
+                        }
+                    )
                 }
             }
         }

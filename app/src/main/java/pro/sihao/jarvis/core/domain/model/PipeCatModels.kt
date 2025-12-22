@@ -36,6 +36,8 @@ sealed class PipeCatEvent {
     data class MediaTranscriptionComplete(val transcription: String, val timestamp: Date = Date()) : PipeCatEvent()
     data class MediaAnalysisComplete(val analysis: String, val timestamp: Date = Date()) : PipeCatEvent()
     object RequestCanceled : PipeCatEvent()
+
+    object Bye : PipeCatEvent()
 }
 
 /**

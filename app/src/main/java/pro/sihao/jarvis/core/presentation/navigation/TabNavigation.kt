@@ -2,6 +2,7 @@ package pro.sihao.jarvis.core.presentation.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -35,11 +36,21 @@ sealed class TabNavigation(
         deepLinkPrefix = "jarvis://glasses"
     )
 
+    /**
+     * Settings tab for app configuration including PipeCat settings
+     */
+    data object Settings : TabNavigation(
+        route = "settings",
+        title = "Settings",
+        icon = Icons.Default.Settings,
+        deepLinkPrefix = "jarvis://settings"
+    )
+
     companion object {
         /**
          * Get all available tabs
          */
-        fun getAllTabs(): List<TabNavigation> = listOf(Chat, Glasses)
+        fun getAllTabs(): List<TabNavigation> = listOf(Chat, Glasses, Settings)
 
         /**
          * Find tab by route
@@ -47,6 +58,7 @@ sealed class TabNavigation(
         fun fromRoute(route: String): TabNavigation? = when (route) {
             Chat.route -> Chat
             Glasses.route -> Glasses
+            Settings.route -> Settings
             else -> null
         }
 

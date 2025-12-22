@@ -69,7 +69,6 @@ class PipeCatForegroundService : Service() {
     // 服务状态管理
     private val serviceScope = CoroutineScope(Dispatchers.Main)
     private var notificationJob: Job? = null
-    private var glassesSessionJob: Job? = null
     private var isServiceRunning = false
     private var isActiveSession = false
     private var lastNotificationTime = 0L
@@ -137,9 +136,6 @@ class PipeCatForegroundService : Service() {
 
             // 使用最小化通知启动前台服务
             startForeground(NOTIFICATION_ID, createPersistentNotification())
-
-            // 启动glasses状态监控（始终运行）
-            startGlassesStateMonitoring()
 
             // 启动通知更新（始终监控）
             startPersistentNotificationUpdates()
@@ -215,7 +211,6 @@ class PipeCatForegroundService : Service() {
 
                 // 停止所有监控
                 notificationJob?.cancel()
-                glassesSessionJob?.cancel()
 
                 // 清理glasses集成
                 cleanupGlassesIntegration()
@@ -443,7 +438,6 @@ class PipeCatForegroundService : Service() {
 
         // Clean up resources
         notificationJob?.cancel()
-        glassesSessionJob?.cancel()
         cleanupGlassesIntegration()
         serviceScope.cancel()
         isServiceRunning = false
@@ -473,33 +467,6 @@ class PipeCatForegroundService : Service() {
             })
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing glasses integration", e)
-        }
-    }
-
-    /**
-     * 启动glasses状态监控（常驻运行）
-     */
-    private fun startGlassesStateMonitoring() {
-        glassesSessionJob?.cancel()
-        glassesSessionJob = serviceScope.launch {
-            try {
-                Log.d(TAG, "启动glasses状态监控（常驻运行）")
-
-                // 持续监控PipeCat服务连接状态
-                pipeCatService.connectionState.collect { state ->
-                    // 处理glasses特定状态变化
-                    if (state.botReady) {
-                        try {
-                            CxrApi.getInstance().sendAsrContent("")
-                            Log.d(TAG, "Bot ready - 向glasses发送ASR内容")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "向glasses发送ASR内容失败", e)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "glasses状态监控出错", e)
-            }
         }
     }
 
@@ -539,8 +506,7 @@ class PipeCatForegroundService : Service() {
                     isAiAssistRunning && !connectionState.isConnected -> {
                         Log.d(TAG, "Glasses AI assist started - connecting PipeCat")
                         try {
-                            val config = configurationManager.getCurrentConfig()
-                            pipeCatConnectionManager.connect(config)
+                            activatePipeCatSession()
                         } catch (e: Exception) {
                             Log.e(TAG, "Error auto-connecting PipeCat for glasses", e)
                         }
@@ -548,7 +514,7 @@ class PipeCatForegroundService : Service() {
                     !isAiAssistRunning && connectionState.isConnected -> {
                         Log.d(TAG, "Glasses AI assist stopped - disconnecting PipeCat")
                         try {
-                            pipeCatConnectionManager.disconnect()
+                            deactivatePipeCatSession()
                         } catch (e: Exception) {
                             Log.e(TAG, "Error auto-disconnecting PipeCat for glasses", e)
                         }

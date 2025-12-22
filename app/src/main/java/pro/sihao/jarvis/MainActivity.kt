@@ -18,6 +18,7 @@ import pro.sihao.jarvis.core.presentation.navigation.BottomTabNavigation
 import pro.sihao.jarvis.core.presentation.navigation.NavigationManager
 import pro.sihao.jarvis.core.presentation.theme.JarvisTheme
 import pro.sihao.jarvis.platform.android.connection.GlassesConnectionManager
+import pro.sihao.jarvis.platform.android.service.PipeCatServiceManager
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -32,14 +33,24 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var initializationCoordinator: AppInitializationCoordinator
 
+    @Inject
+    lateinit var pipeCatServiceManager: PipeCatServiceManager
+
     companion object {
         private const val TAG = "MainActivity"
+        private const val PERMISSION_REQUEST_CODE = 1001
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Log.d(TAG, "MainActivity onCreate")
+
+        // Check and request permissions for foreground service
+        checkAndRequestPermissions()
+
+        // 启动常驻PipeCat服务
+        startPersistentPipeCatService()
 
         setContent {
             JarvisTheme {
@@ -107,6 +118,48 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error triggering glasses connection from MainActivity", e)
             }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        when (requestCode) {
+            PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty()) {
+                    val allGranted = grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }
+                    if (allGranted) {
+                        Log.d(TAG, "All foreground service permissions granted")
+                    } else {
+                        Log.w(TAG, "Some foreground service permissions denied")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkAndRequestPermissions() {
+        if (!pipeCatServiceManager.hasForegroundServicePermissions()) {
+            Log.d(TAG, "Requesting foreground service permissions")
+            pipeCatServiceManager.requestForegroundServicePermissions(this)
+        } else {
+            Log.d(TAG, "All foreground service permissions already granted")
+        }
+    }
+
+    /**
+     * 启动常驻PipeCat服务
+     */
+    private fun startPersistentPipeCatService() {
+        try {
+            Log.d(TAG, "启动常驻PipeCat服务")
+            pipeCatServiceManager.startPersistentService()
+        } catch (e: Exception) {
+            Log.e(TAG, "启动常驻PipeCat服务失败", e)
         }
     }
 

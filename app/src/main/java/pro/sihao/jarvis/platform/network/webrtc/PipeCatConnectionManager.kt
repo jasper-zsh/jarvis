@@ -2,8 +2,6 @@ package pro.sihao.jarvis.platform.network.webrtc
 
 import android.content.Context
 import android.util.Log
-import com.rokid.cxr.client.extend.CxrApi
-import com.rokid.cxr.client.utils.ValueUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,18 +49,6 @@ class PipeCatConnectionManager @Inject constructor(
         scope.launch {
             pipeCatService.connectionState.collect { serviceState ->
                 _connectionState.update { serviceState }
-            }
-        }
-        CxrApi.getInstance().setSceneStatusUpdateListener {
-            if (it.isAiAssistRunning && !connectionState.value.isConnected) {
-                scope.launch {
-                    connect(configurationManager.getCurrentConfig())
-                }
-            }
-            if (!it.isAiAssistRunning && connectionState.value.isConnected) {
-                scope.launch {
-                    disconnect()
-                }
             }
         }
     }
@@ -126,7 +112,8 @@ class PipeCatConnectionManager @Inject constructor(
     }
 
     /**
-     * Send audio data to PipeCat (from glasses)
+     * Send audio data to PipeCat
+     * Note: This is now primarily handled by PipeCatForegroundService for glasses integration
      */
     fun sendAudioData(audioData: ByteArray) {
         pipeCatService.sendAudioData(audioData)
@@ -207,7 +194,7 @@ class PipeCatConnectionManager @Inject constructor(
                 _connectionState.update {
                     it.copy(botReady = true)
                 }
-                CxrApi.getInstance().sendAsrContent("")
+                // Note: ASR content handling is now done in PipeCatForegroundService
             }
 
             // New text chat events

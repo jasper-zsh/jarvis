@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import pro.sihao.jarvis.platform.network.webrtc.PipeCatConnectionManager
+import pro.sihao.jarvis.platform.android.service.PipeCatServiceManager
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.ChatMode
@@ -15,7 +15,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PipeCatViewModel @Inject constructor(
-    private val pipeCatConnectionManager: PipeCatConnectionManager,
+    private val pipeCatServiceManager: PipeCatServiceManager,
     private val configurationManager: pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager,
     private val navigationManager: NavigationManager
 ) : ViewModel() {
@@ -29,8 +29,8 @@ class PipeCatViewModel @Inject constructor(
 
     private fun observeConnectionState() {
         viewModelScope.launch {
-            pipeCatConnectionManager.connectionState.collect { state ->
-                _uiState.update { 
+            pipeCatServiceManager.connectionState.collect { state ->
+                _uiState.update {
                     it.copy(
                         connectionState = state,
                         isConnecting = state.isConnecting,
@@ -42,12 +42,12 @@ class PipeCatViewModel @Inject constructor(
         }
     }
 
-    
+  
     fun connect(config: PipeCatConfig) {
         viewModelScope.launch {
             _uiState.update { it.copy(isConnecting = true, errorMessage = null) }
             try {
-                pipeCatConnectionManager.connect(config)
+                pipeCatServiceManager.connect(config)
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -90,9 +90,9 @@ class PipeCatViewModel @Inject constructor(
     fun disconnect() {
         viewModelScope.launch {
             try {
-                pipeCatConnectionManager.disconnect()
+                pipeCatServiceManager.disconnect()
             } catch (e: Exception) {
-                _uiState.update { 
+                _uiState.update {
                     it.copy(errorMessage = "Failed to disconnect: ${e.message}")
                 }
             }
@@ -102,14 +102,14 @@ class PipeCatViewModel @Inject constructor(
     fun toggleMicrophone(enabled: Boolean) {
         viewModelScope.launch {
             try {
-                pipeCatConnectionManager.toggleMicrophone(enabled)
-                _uiState.update { 
+                pipeCatServiceManager.toggleMicrophone(enabled)
+                _uiState.update {
                     it.copy(
                         microphoneEnabled = enabled
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { 
+                _uiState.update {
                     it.copy(errorMessage = "Failed to toggle microphone: ${e.message}")
                 }
             }
@@ -119,14 +119,14 @@ class PipeCatViewModel @Inject constructor(
     fun toggleCamera(enabled: Boolean) {
         viewModelScope.launch {
             try {
-                pipeCatConnectionManager.toggleCamera(enabled)
-                _uiState.update { 
+                pipeCatServiceManager.toggleCamera(enabled)
+                _uiState.update {
                     it.copy(
                         cameraEnabled = enabled
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { 
+                _uiState.update {
                     it.copy(errorMessage = "Failed to toggle camera: ${e.message}")
                 }
             }
@@ -135,6 +135,34 @@ class PipeCatViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    /**
+     * Start the PipeCat foreground service
+     * Call this when the user wants to begin a voice session
+     */
+    fun startService() {
+        try {
+            pipeCatServiceManager.startService()
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(errorMessage = "Failed to start service: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Stop the PipeCat foreground service
+     * Call this when the user wants to end the voice session completely
+     */
+    fun stopService() {
+        try {
+            pipeCatServiceManager.stopService()
+        } catch (e: Exception) {
+            _uiState.update {
+                it.copy(errorMessage = "Failed to stop service: ${e.message}")
+            }
+        }
     }
 
     fun switchToGlassesMode() {

@@ -8,12 +8,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import pro.sihao.jarvis.core.domain.model.ContentType
-import pro.sihao.jarvis.core.domain.model.Message
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
-import pro.sihao.jarvis.core.domain.repository.MessageRepository
 import pro.sihao.jarvis.core.domain.service.PipeCatService
 import pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager
 import pro.sihao.jarvis.platform.android.service.PipeCatForegroundService
@@ -22,9 +19,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Simplified manager for PipeCat connections and message persistence
+ * Simplified manager for PipeCat connections
  *
- * NOTE: This class is now primarily a bridge for message persistence.
+ * NOTE: This class is now primarily a bridge for PipeCat event handling.
  * Most functionality has been moved to PipeCatService and PipeCatForegroundService
  * to reduce code duplication and simplify the architecture.
  */
@@ -32,7 +29,6 @@ import javax.inject.Singleton
 class PipeCatConnectionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val pipeCatService: PipeCatService,
-    private val messageRepository: MessageRepository,
     private val configurationManager: ConfigurationManager
 ) {
     companion object {
@@ -59,30 +55,16 @@ class PipeCatConnectionManager @Inject constructor(
     }
 
     /**
-     * Handle PipeCat events - simplified to focus on message persistence only
+     * Handle PipeCat events - simplified event handling without message persistence
      */
     private suspend fun handlePipeCatEvent(event: PipeCatEvent) {
         when (event) {
             is PipeCatEvent.UserTranscript -> {
-                val message = Message(
-                    content = event.text,
-                    timestamp = event.timestamp,
-                    isFromUser = true,
-                    contentType = ContentType.REALTIME_TRANSCRIPT
-                )
-                messageRepository.insertMessage(message)
-                Log.d(TAG, "Inserted user transcript message: ${event.text}")
+                Log.d(TAG, "User transcript: ${event.text}")
             }
 
             is PipeCatEvent.BotResponse -> {
-                val message = Message(
-                    content = event.text,
-                    timestamp = event.timestamp,
-                    isFromUser = false,
-                    contentType = ContentType.REALTIME_RESPONSE
-                )
-                messageRepository.insertMessage(message)
-                Log.d(TAG, "Inserted bot response message: ${event.text}")
+                Log.d(TAG, "Bot response: ${event.text}")
             }
 
             is PipeCatEvent.BotReady -> {

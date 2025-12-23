@@ -5,10 +5,9 @@ import kotlinx.coroutines.flow.StateFlow
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
-import pro.sihao.jarvis.core.domain.model.Message
 
 /**
- * Service interface for PipeCat functionality - handles all chat modes (text, voice, media)
+ * Service interface for PipeCat functionality - handles real-time voice communication
  */
 interface PipeCatService {
     /**

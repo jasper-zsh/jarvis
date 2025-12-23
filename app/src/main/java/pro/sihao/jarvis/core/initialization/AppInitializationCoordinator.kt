@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import pro.sihao.jarvis.core.data.database.initializer.DatabaseInitializer
 import pro.sihao.jarvis.platform.android.connection.GlassesConnectionManager
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,7 +18,6 @@ import javax.inject.Singleton
 @Singleton
 class AppInitializationCoordinator @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val databaseInitializer: DatabaseInitializer,
     private val glassesConnectionManager: GlassesConnectionManager
 ) {
     companion object {
@@ -38,7 +36,6 @@ class AppInitializationCoordinator @Inject constructor(
 
     enum class InitializationState {
         NOT_STARTED,
-        INITIALIZING_DATABASE,
         INITIALIZING_SERVICES,
         READY,
         FAILED
@@ -50,16 +47,8 @@ class AppInitializationCoordinator @Inject constructor(
         initializationJob?.cancel()
         initializationJob = CoroutineScope(Dispatchers.Main).launch {
             try {
-                _initializationState.value = InitializationState.INITIALIZING_DATABASE
-                Log.d(TAG, "Step 1: Initializing database")
-
-                // Initialize database first
-                CoroutineScope(Dispatchers.IO).launch {
-                    databaseInitializer.initializeIfNeeded()
-                }.join()
-
                 _initializationState.value = InitializationState.INITIALIZING_SERVICES
-                Log.d(TAG, "Step 2: Initializing services and triggering glasses connection")
+                Log.d(TAG, "Initializing services and triggering glasses connection")
 
                 // Wait a bit for system services to be ready
                 delay(500)

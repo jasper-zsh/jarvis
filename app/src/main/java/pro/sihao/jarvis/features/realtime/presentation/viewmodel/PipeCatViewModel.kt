@@ -8,16 +8,12 @@ import kotlinx.coroutines.launch
 import pro.sihao.jarvis.platform.android.service.PipeCatServiceManager
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
-import pro.sihao.jarvis.core.domain.model.ChatMode
-import pro.sihao.jarvis.core.presentation.navigation.NavigationManager
-import pro.sihao.jarvis.core.presentation.navigation.TabNavigation
 import javax.inject.Inject
 
 @HiltViewModel
 class PipeCatViewModel @Inject constructor(
     private val pipeCatServiceManager: PipeCatServiceManager,
-    private val configurationManager: pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager,
-    private val navigationManager: NavigationManager
+    private val configurationManager: pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PipeCatUiState())
@@ -164,32 +160,6 @@ class PipeCatViewModel @Inject constructor(
             }
         }
     }
-
-    fun switchToGlassesMode() {
-        _uiState.update {
-            it.copy(
-                currentMode = ChatMode.GLASSES
-            )
-        }
-        // Navigate to Glasses tab when switching to glasses mode
-        navigationManager.navigateToTab(TabNavigation.Glasses)
-    }
-
-    fun switchToRealtimeMode() {
-        _uiState.update { 
-            it.copy(
-                currentMode = ChatMode.REALTIME
-            )
-        }
-    }
-
-    fun switchToTextMode() {
-        _uiState.update { 
-            it.copy(
-                currentMode = ChatMode.TEXT
-            )
-        }
-    }
 }
 
 data class PipeCatUiState(
@@ -198,6 +168,5 @@ data class PipeCatUiState(
     val isConnected: Boolean = false,
     val microphoneEnabled: Boolean = true,
     val cameraEnabled: Boolean = false,
-    val errorMessage: String? = null,
-    val currentMode: ChatMode = ChatMode.TEXT
+    val errorMessage: String? = null
 )

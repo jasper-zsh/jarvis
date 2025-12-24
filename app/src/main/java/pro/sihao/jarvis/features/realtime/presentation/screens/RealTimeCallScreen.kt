@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import pro.sihao.jarvis.features.realtime.presentation.viewmodel.PipeCatViewModel
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
-import pro.sihao.jarvis.features.realtime.presentation.components.realtime.ChatModeSelector
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.BotIndicator
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.AudioIndicator
 
@@ -43,24 +42,8 @@ fun RealTimeCallScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Header with mode selector
-        CallHeader(
-            currentMode = uiState.currentMode,
-            onModeSelected = { mode ->
-                when (mode) {
-                    pro.sihao.jarvis.core.domain.model.ChatMode.TEXT -> {
-                        // Text mode navigation now handled by bottom tab navigation
-                        // Users can access settings through the navigation system
-                    }
-                    pro.sihao.jarvis.core.domain.model.ChatMode.REALTIME -> pipeCatViewModel.switchToRealtimeMode()
-                    pro.sihao.jarvis.core.domain.model.ChatMode.GLASSES -> {
-                        pipeCatViewModel.switchToGlassesMode()
-                        // Navigation to Glasses tab handled by NavigationManager in ViewModel
-                    }
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
+        // Header
+        CallHeader(modifier = Modifier.fillMaxWidth())
 
         // Main call interface
         CallInterface(
@@ -104,8 +87,6 @@ fun RealTimeCallScreen(
 
 @Composable
 private fun CallHeader(
-    currentMode: pro.sihao.jarvis.core.domain.model.ChatMode,
-    onModeSelected: (pro.sihao.jarvis.core.domain.model.ChatMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -125,12 +106,6 @@ private fun CallHeader(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
-            )
-
-            ChatModeSelector(
-                currentMode = currentMode,
-                onModeSelected = onModeSelected,
-                modifier = Modifier.fillMaxWidth(0.8f)
             )
         }
     }

@@ -74,12 +74,3 @@ data class PipeCatConnectionState(
     val config: PipeCatConfig? = null,
     val transportState: TransportState = TransportState.IDLE
 )
-
-/**
- * Chat modes for the application
- */
-enum class ChatMode {
-    TEXT,
-    REALTIME,
-    GLASSES
-}

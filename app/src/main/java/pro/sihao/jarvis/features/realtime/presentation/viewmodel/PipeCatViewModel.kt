@@ -5,9 +5,14 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import android.util.Log
 import pro.sihao.jarvis.platform.android.service.PipeCatServiceManager
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
+import pro.sihao.jarvis.core.domain.model.TranscriptMessage
+import pro.sihao.jarvis.core.domain.model.MessageRole
+import pro.sihao.jarvis.core.domain.model.PipeCatEvent
+import java.util.Date
 import javax.inject.Inject
 
 @HiltViewModel
@@ -15,12 +20,17 @@ class PipeCatViewModel @Inject constructor(
     private val pipeCatServiceManager: PipeCatServiceManager,
     private val configurationManager: pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager
 ) : ViewModel() {
+    companion object {
+        private const val TAG = "PipeCatViewModel"
+    }
 
     private val _uiState = MutableStateFlow(PipeCatUiState())
     val uiState: StateFlow<PipeCatUiState> = _uiState.asStateFlow()
 
     init {
+        Log.d(TAG, "PipeCatViewModel initialized")
         observeConnectionState()
+        observeTranscripts()
     }
 
     private fun observeConnectionState() {
@@ -38,13 +48,164 @@ class PipeCatViewModel @Inject constructor(
         }
     }
 
+    private fun observeTranscripts() {
+        viewModelScope.launch {
+            Log.d(TAG, "observeTranscripts() started collecting eventFlow")
+            pipeCatServiceManager.eventFlow.collect { event ->
+                Log.d(TAG, "Received event: $event")
+                when (event) {
+                    is PipeCatEvent.UserTranscript -> {
+                        Log.d(TAG, "Handling UserTranscript: ${event.text}")
+                        handleUserTranscript(event.text, event.timestamp, event.isFinal)
+                    }
+                    is PipeCatEvent.BotResponse -> {
+                        Log.d(TAG, "Handling BotResponse: ${event.text}")
+                        handleBotTranscript(event.text, event.timestamp)
+                    }
+                    is PipeCatEvent.BotStartedSpeaking -> {
+                        Log.d(TAG, "Handling BotStartedSpeaking")
+                        handleBotStartedSpeaking(event.timestamp)
+                    }
+                    is PipeCatEvent.BotStoppedSpeaking -> {
+                        Log.d(TAG, "Handling BotStoppedSpeaking")
+                        handleBotStoppedSpeaking(event.timestamp)
+                    }
+                    else -> {}
+                }
+            }
+        }
+    }
+
+    private var lastUserMessageFinal = true
+
+    private fun handleUserTranscript(text: String, timestamp: Date, isFinal: Boolean = false) {
+        _uiState.update { state ->
+            val transcripts = state.transcripts
+            val updated = if (lastUserMessageFinal) {
+                // Create new message (new turn)
+                lastUserMessageFinal = isFinal  // Set based on SDK's final flag
+                transcripts + TranscriptMessage(
+                    id = generateMessageId(),
+                    role = MessageRole.USER,
+                    text = text,
+                    timestamp = timestamp,
+                    isFinal = isFinal
+                )
+            } else {
+                // Update existing user message (same turn)
+                val lastIndex = transcripts.indexOfLast { it.role == MessageRole.USER }
+                if (lastIndex >= 0) {
+                    transcripts.toMutableList().apply {
+                        set(lastIndex, transcripts[lastIndex].copy(
+                            text = text,
+                            timestamp = timestamp,
+                            isFinal = isFinal
+                        ))
+                        // If this is the final update, reset flag for next turn
+                        if (isFinal) {
+                            lastUserMessageFinal = true
+                        }
+                    }
+                } else {
+                    // Fallback: create new message if none exists
+                    lastUserMessageFinal = isFinal
+                    transcripts + TranscriptMessage(
+                        id = generateMessageId(),
+                        role = MessageRole.USER,
+                        text = text,
+                        timestamp = timestamp,
+                        isFinal = isFinal
+                    )
+                }
+            }
+            state.copy(transcripts = updated)
+        }
+    }
+
+    private var botSpeaking = false
+
+    private fun handleBotTranscript(text: String, timestamp: Date) {
+        _uiState.update { state ->
+            val transcripts = state.transcripts
+            val updated = if (botSpeaking) {
+                // Append to last bot message
+                val lastIndex = transcripts.indexOfLast { it.role == MessageRole.BOT }
+                if (lastIndex >= 0) {
+                    transcripts.toMutableList().apply {
+                        val lastMsg = transcripts[lastIndex]
+                        set(lastIndex, lastMsg.copy(text = lastMsg.text + text, timestamp = timestamp))
+                    }
+                } else {
+                    transcripts + TranscriptMessage(
+                        id = generateMessageId(),
+                        role = MessageRole.BOT,
+                        text = text,
+                        timestamp = timestamp
+                    )
+                }
+            } else {
+                // Create new bot message
+                botSpeaking = true
+                transcripts + TranscriptMessage(
+                    id = generateMessageId(),
+                    role = MessageRole.BOT,
+                    text = text,
+                    timestamp = timestamp
+                )
+            }
+            state.copy(transcripts = updated)
+        }
+    }
+
+    /**
+     * Handle bot started speaking event
+     * Resets the bot speaking flag to allow new bot message creation
+     */
+    private fun handleBotStartedSpeaking(timestamp: Date) {
+        // This event signals the START of a new bot turn
+        // The next BotResponse will create a new bubble
+        botSpeaking = false
+        Log.d(TAG, "Bot started speaking, reset botSpeaking flag for new message")
+    }
+
+    /**
+     * Handle bot stopped speaking event
+     * Marks the current bot message as complete
+     */
+    private fun handleBotStoppedSpeaking(timestamp: Date) {
+        _uiState.update { state ->
+            val transcripts = state.transcripts
+            val lastIndex = transcripts.indexOfLast { it.role == MessageRole.BOT }
+            if (lastIndex >= 0) {
+                val updated = transcripts.toMutableList()
+                updated[lastIndex] = transcripts[lastIndex].copy(isFinal = true)
+                state.copy(transcripts = updated)
+            } else {
+                state
+            }
+        }
+        Log.d(TAG, "Bot stopped speaking, marked last bot message as final")
+    }
+
+    private fun generateMessageId(): String = "${System.currentTimeMillis()}-${(0..999).random()}"
+
+    fun clearTranscripts() {
+        _uiState.update { it.copy(transcripts = emptyList()) }
+        lastUserMessageFinal = true
+        botSpeaking = false
+    }
+
   
     fun connect(config: PipeCatConfig) {
+        Log.d(TAG, "connect() called with config: $config")
         viewModelScope.launch {
             _uiState.update { it.copy(isConnecting = true, errorMessage = null) }
             try {
+                Log.d(TAG, "Calling pipeCatServiceManager.connect()")
                 pipeCatServiceManager.connect(config)
+                Log.d(TAG, "pipeCatServiceManager.connect() returned successfully")
             } catch (e: Exception) {
+                Log.e(TAG, "Failed to connect", e)
                 _uiState.update {
                     it.copy(
                         isConnecting = false,
@@ -56,13 +217,16 @@ class PipeCatViewModel @Inject constructor(
     }
 
     fun connectWithDefaultConfig() {
+        Log.d(TAG, "connectWithDefaultConfig() called")
         viewModelScope.launch {
             try {
                 // Use ConfigurationManager to get current settings
                 val config = configurationManager.getCurrentConfig()
+                Log.d(TAG, "Got config: $config")
 
                 // Validate configuration before connecting
                 val validationResult = configurationManager.validateConfiguration()
+                Log.d(TAG, "Validation result: isValid=${validationResult.isValid}, message=${validationResult.message}")
                 if (!validationResult.isValid) {
                     _uiState.update {
                         it.copy(
@@ -74,6 +238,7 @@ class PipeCatViewModel @Inject constructor(
 
                 connect(config)
             } catch (e: Exception) {
+                Log.e(TAG, "Exception in connectWithDefaultConfig", e)
                 _uiState.update {
                     it.copy(
                         errorMessage = "Failed to connect: ${e.message}"
@@ -168,5 +333,6 @@ data class PipeCatUiState(
     val isConnected: Boolean = false,
     val microphoneEnabled: Boolean = true,
     val cameraEnabled: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val transcripts: List<TranscriptMessage> = emptyList()
 )

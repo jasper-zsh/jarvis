@@ -4,9 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -24,6 +22,7 @@ import pro.sihao.jarvis.features.realtime.presentation.viewmodel.PipeCatViewMode
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.BotIndicator
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.AudioIndicator
+import pro.sihao.jarvis.features.realtime.presentation.components.realtime.ConversationDisplay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,18 +31,32 @@ fun RealTimeCallScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by pipeCatViewModel.uiState.collectAsState()
-    val scrollState = rememberScrollState()
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(scrollState),
+            .background(MaterialTheme.colorScheme.background),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Header
-        CallHeader(modifier = Modifier.fillMaxWidth())
+        CallHeader(
+            modifier = Modifier.fillMaxWidth(),
+            onClear = { pipeCatViewModel.clearTranscripts() }
+        )
+
+        // Transcript display
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(300.dp)
+        ) {
+            ConversationDisplay(
+                transcripts = uiState.transcripts,
+                connectionState = uiState.connectionState,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         // Main call interface
         CallInterface(
@@ -80,6 +93,7 @@ fun RealTimeCallScreen(
             onToggleMicrophone = pipeCatViewModel::toggleMicrophone,
             onToggleCamera = pipeCatViewModel::toggleCamera,
             onEndCall = pipeCatViewModel::disconnect,
+            onConnect = pipeCatViewModel::connectWithDefaultConfig,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -87,19 +101,20 @@ fun RealTimeCallScreen(
 
 @Composable
 private fun CallHeader(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClear: (() -> Unit)? = null
 ) {
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "Real-time Voice Chat",
@@ -107,6 +122,12 @@ private fun CallHeader(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
+
+            onClear?.let { clearCallback ->
+                TextButton(onClick = clearCallback) {
+                    Text("Clear")
+                }
+            }
         }
     }
 }
@@ -425,6 +446,7 @@ private fun CallControls(
     onToggleMicrophone: (Boolean) -> Unit,
     onToggleCamera: (Boolean) -> Unit,
     onEndCall: () -> Unit,
+    onConnect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -513,7 +535,7 @@ private fun CallControls(
             } else {
                 // Connect button (when not connected)
                 Button(
-                    onClick = { /* Handle connect */ },
+                    onClick = onConnect,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),

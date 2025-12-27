@@ -14,9 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
+import pro.sihao.jarvis.core.domain.model.PipeCatEvent
 import pro.sihao.jarvis.core.domain.service.PipeCatService
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -209,6 +211,12 @@ class PipeCatServiceManager @Inject constructor(
      */
     val connectionState: StateFlow<PipeCatConnectionState>
         get() = pipeCatService.connectionState
+
+    /**
+     * Get the PipeCat event flow from the service
+     */
+    val eventFlow: Flow<PipeCatEvent>
+        get() = pipeCatService.eventFlow
 
     /**
      * 连接到PipeCat (使用常驻服务模式)

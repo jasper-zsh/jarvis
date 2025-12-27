@@ -1,3 +1,6 @@
 [submodule "pipecat-examples"]
 	path = pipecat-examples
 	url = https://github.com/pipecat-ai/pipecat-examples.git
+[submodule "voice-ui-kit"]
+	path = voice-ui-kit
+	url = https://github.com/pipecat-ai/voice-ui-kit

@@ -38,6 +38,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -89,6 +92,10 @@ class PipeCatServiceImpl @Inject constructor(
     }
     private val _connectionState = MutableStateFlow(PipeCatConnectionState())
     override val connectionState: StateFlow<PipeCatConnectionState> = _connectionState.asStateFlow()
+
+    // Event bus for transcript and other events
+    private val _eventFlow = MutableSharedFlow<PipeCatEvent>(replay = 50)
+    override val eventFlow: SharedFlow<PipeCatEvent> = _eventFlow.asSharedFlow()
 
     // Real-time session management
     private var isSessionActive = false
@@ -232,7 +239,9 @@ class PipeCatServiceImpl @Inject constructor(
                     _connectionState.update {
                         it.copy(errorMessage = "Backend error: $message")
                     }
-                    trySend(PipeCatEvent.Error("Backend error: $message"))
+                    val event = PipeCatEvent.Error("Backend error: $message")
+                    trySend(event)
+                    _eventFlow.tryEmit(event)
                 }
 
                 override fun onBotReady(data: BotReadyData) {
@@ -244,12 +253,14 @@ class PipeCatServiceImpl @Inject constructor(
                             isConnected = true
                         )
                     }
-                    trySend(PipeCatEvent.BotReady(
+                    val event = PipeCatEvent.BotReady(
                         pro.sihao.jarvis.core.domain.model.BotReadyData(
                             botId = "jarvis-assistant", // Use default for now
                             capabilities = listOf("voice", "text")
                         )
-                    ))
+                    )
+                    trySend(event)
+                    _eventFlow.tryEmit(event)
                 }
 
                 override fun onMetrics(data: PipecatMetrics) {
@@ -260,6 +271,9 @@ class PipeCatServiceImpl @Inject constructor(
 
                 override fun onBotTranscript(text: String) {
                     Log.i(TAG, "Bot transcript: $text")
+                    val event = PipeCatEvent.BotResponse(text = text, timestamp = Date())
+                    trySend(event)
+                    _eventFlow.tryEmit(event)
                 }
 
                 override fun onBotLLMText(data: MsgServerToClient.Data.BotLLMTextData) {
@@ -269,10 +283,13 @@ class PipeCatServiceImpl @Inject constructor(
 
                 override fun onUserTranscript(data: Transcript) {
                     Log.i(TAG, "User transcript: $data")
-                    trySend(PipeCatEvent.UserTranscript(
+                    val event = PipeCatEvent.UserTranscript(
                         text = data.text,
-                        timestamp = Date()
-                    ))
+                        timestamp = Date(),
+                        isFinal = data.final
+                    )
+                    trySend(event)
+                    _eventFlow.tryEmit(event)
                     CxrApi.getInstance().sendAsrContent(data.text)
                 }
 
@@ -281,7 +298,9 @@ class PipeCatServiceImpl @Inject constructor(
                     _connectionState.update {
                         it.copy(botIsSpeaking = true)
                     }
-                    trySend(PipeCatEvent.BotStartedSpeaking())
+                    val event = PipeCatEvent.BotStartedSpeaking()
+                    trySend(event)
+                    _eventFlow.tryEmit(event)
                 }
 
                 override fun onBotStoppedSpeaking() {
@@ -289,7 +308,9 @@ class PipeCatServiceImpl @Inject constructor(
                     _connectionState.update {
                         it.copy(botIsSpeaking = false)
                     }
-                    trySend(PipeCatEvent.BotStoppedSpeaking())
+                    val event = PipeCatEvent.BotStoppedSpeaking()
+                    trySend(event)
+                    _eventFlow.tryEmit(event)
                 }
 
                 override fun onUserStartedSpeaking() {
@@ -323,6 +344,7 @@ class PipeCatServiceImpl @Inject constructor(
                         PipeCatConnectionState()
                     }
                     trySend(PipeCatEvent.Disconnected)
+                    _eventFlow.tryEmit(PipeCatEvent.Disconnected)
                 }
 
                 override fun onUserAudioLevel(level: Float) {

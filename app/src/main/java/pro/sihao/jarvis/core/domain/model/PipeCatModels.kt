@@ -20,7 +20,7 @@ data class PipeCatConfig(
 sealed class PipeCatEvent {
     data class TransportStateChanged(val state: TransportState) : PipeCatEvent()
     data class BotReady(val data: BotReadyData) : PipeCatEvent()
-    data class UserTranscript(val text: String, val timestamp: Date = Date()) : PipeCatEvent()
+    data class UserTranscript(val text: String, val timestamp: Date = Date(), val isFinal: Boolean = false) : PipeCatEvent()
     data class BotResponse(val text: String, val timestamp: Date = Date()) : PipeCatEvent()
     data class BotStartedSpeaking(val timestamp: Date = Date()) : PipeCatEvent()
     data class BotStoppedSpeaking(val timestamp: Date = Date()) : PipeCatEvent()
@@ -73,4 +73,23 @@ data class PipeCatConnectionState(
     val errorMessage: String? = null,
     val config: PipeCatConfig? = null,
     val transportState: TransportState = TransportState.IDLE
+)
+
+/**
+ * Message role enumeration
+ */
+enum class MessageRole {
+    USER,
+    BOT
+}
+
+/**
+ * Transcript message for conversation history
+ */
+data class TranscriptMessage(
+    val id: String,
+    val role: MessageRole,
+    val text: String,
+    val timestamp: Date,
+    val isFinal: Boolean = true
 )

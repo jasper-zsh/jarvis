@@ -16,6 +16,11 @@ interface PipeCatService {
     val connectionState: StateFlow<PipeCatConnectionState>
 
     /**
+     * Event flow for all PipeCat events (transcripts, status changes, etc.)
+     */
+    val eventFlow: Flow<PipeCatEvent>
+
+    /**
      * Start a real-time session with PipeCat
      * @param config Configuration for the PipeCat session
      * @return Flow of PipeCat events

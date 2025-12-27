@@ -44,6 +44,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
@@ -392,7 +395,20 @@ class PipeCatServiceImpl @Inject constructor(
                     }
                     onResult(Value.Object())
                 }
-
+            })
+            pipecatClient?.registerFunctionCallHandler("SetBrightness", object : LLMFunctionCallHandler {
+                override fun handleFunctionCall(
+                    data: LLMFunctionCallData,
+                    onResult: (Value) -> Unit
+                ) {
+                    Log.d(TAG, "SetBrightness invoked $data")
+                    val v = data.args.jsonObject.get("value")?.jsonPrimitive?.intOrNull
+                    if (v != null) {
+                        CxrApi.getInstance().setGlassBrightness(v)
+                    } else {
+                        Log.w(TAG, "SetBrightness wrong args")
+                    }
+                }
             })
 
             // Build API request headers

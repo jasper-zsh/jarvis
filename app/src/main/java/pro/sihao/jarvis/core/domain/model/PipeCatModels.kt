@@ -22,6 +22,7 @@ sealed class PipeCatEvent {
     data class BotReady(val data: BotReadyData) : PipeCatEvent()
     data class UserTranscript(val text: String, val timestamp: Date = Date(), val isFinal: Boolean = false) : PipeCatEvent()
     data class BotResponse(val text: String, val timestamp: Date = Date()) : PipeCatEvent()
+    data class BotLLMText(val text: String, val timestamp: Date = Date()) : PipeCatEvent()
     data class BotStartedSpeaking(val timestamp: Date = Date()) : PipeCatEvent()
     data class BotStoppedSpeaking(val timestamp: Date = Date()) : PipeCatEvent()
     data class AudioLevelChanged(val level: Float, val isUser: Boolean) : PipeCatEvent()

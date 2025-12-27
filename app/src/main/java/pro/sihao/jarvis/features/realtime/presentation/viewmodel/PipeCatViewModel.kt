@@ -58,6 +58,10 @@ class PipeCatViewModel @Inject constructor(
                         Log.d(TAG, "Handling UserTranscript: ${event.text}")
                         handleUserTranscript(event.text, event.timestamp, event.isFinal)
                     }
+                    is PipeCatEvent.BotLLMText -> {
+                        Log.d(TAG, "Handling BotLLMText: ${event.text}")
+                        handleBotLLMText(event.text, event.timestamp)
+                    }
                     is PipeCatEvent.BotResponse -> {
                         Log.d(TAG, "Handling BotResponse: ${event.text}")
                         handleBotTranscript(event.text, event.timestamp)
@@ -124,6 +128,41 @@ class PipeCatViewModel @Inject constructor(
 
     private var botSpeaking = false
 
+    /**
+     * Handle streaming LLM text chunks
+     * Always appends to the current bot message to group all chunks in one message box
+     */
+    private fun handleBotLLMText(text: String, timestamp: Date) {
+        _uiState.update { state ->
+            val transcripts = state.transcripts
+            val lastBotIndex = transcripts.indexOfLast { it.role == MessageRole.BOT }
+
+            // Check if we should append to existing message or create new one
+            val shouldAppend = lastBotIndex >= 0 &&
+                !transcripts[lastBotIndex].isFinal &&
+                botSpeaking
+
+            val updated = if (shouldAppend) {
+                // Append to existing bot message (streaming)
+                transcripts.toMutableList().apply {
+                    val lastMsg = transcripts[lastBotIndex]
+                    set(lastBotIndex, lastMsg.copy(text = lastMsg.text + text, timestamp = timestamp))
+                }
+            } else {
+                // Create new bot message
+                botSpeaking = true
+                transcripts + TranscriptMessage(
+                    id = generateMessageId(),
+                    role = MessageRole.BOT,
+                    text = text,
+                    timestamp = timestamp,
+                    isFinal = false
+                )
+            }
+            state.copy(transcripts = updated)
+        }
+    }
+
     private fun handleBotTranscript(text: String, timestamp: Date) {
         _uiState.update { state ->
             val transcripts = state.transcripts
@@ -136,6 +175,8 @@ class PipeCatViewModel @Inject constructor(
                         set(lastIndex, lastMsg.copy(text = lastMsg.text + text, timestamp = timestamp))
                     }
                 } else {
+                    // Fallback: no bot message exists, create new one
+                    botSpeaking = true
                     transcripts + TranscriptMessage(
                         id = generateMessageId(),
                         role = MessageRole.BOT,
@@ -144,14 +185,29 @@ class PipeCatViewModel @Inject constructor(
                     )
                 }
             } else {
-                // Create new bot message
-                botSpeaking = true
-                transcripts + TranscriptMessage(
-                    id = generateMessageId(),
-                    role = MessageRole.BOT,
-                    text = text,
-                    timestamp = timestamp
-                )
+                // Check if we should append to the last bot message instead of creating new
+                val lastBotIndex = transcripts.indexOfLast { it.role == MessageRole.BOT }
+                val shouldAppend = lastBotIndex >= 0 &&
+                    !transcripts[lastBotIndex].isFinal &&
+                    (timestamp.time - transcripts[lastBotIndex].timestamp.time) < 5000 // Within 5 seconds
+
+                if (shouldAppend) {
+                    // Append to existing bot message (same round)
+                    botSpeaking = true
+                    transcripts.toMutableList().apply {
+                        val lastMsg = transcripts[lastBotIndex]
+                        set(lastBotIndex, lastMsg.copy(text = lastMsg.text + text, timestamp = timestamp))
+                    }
+                } else {
+                    // Create new bot message
+                    botSpeaking = true
+                    transcripts + TranscriptMessage(
+                        id = generateMessageId(),
+                        role = MessageRole.BOT,
+                        text = text,
+                        timestamp = timestamp
+                    )
+                }
             }
             state.copy(transcripts = updated)
         }
@@ -159,18 +215,17 @@ class PipeCatViewModel @Inject constructor(
 
     /**
      * Handle bot started speaking event
-     * Resets the bot speaking flag to allow new bot message creation
+     * Does NOT reset the flag to prevent splitting responses
      */
     private fun handleBotStartedSpeaking(timestamp: Date) {
-        // This event signals the START of a new bot turn
-        // The next BotResponse will create a new bubble
-        botSpeaking = false
-        Log.d(TAG, "Bot started speaking, reset botSpeaking flag for new message")
+        // Don't reset botSpeaking - this event can arrive mid-response
+        // Only BotStoppedSpeaking should reset the flag for the next round
+        Log.d(TAG, "Bot started speaking, keeping botSpeaking=$botSpeaking")
     }
 
     /**
      * Handle bot stopped speaking event
-     * Marks the current bot message as complete
+     * Marks the current bot message as complete and resets flag for next round
      */
     private fun handleBotStoppedSpeaking(timestamp: Date) {
         _uiState.update { state ->
@@ -184,7 +239,9 @@ class PipeCatViewModel @Inject constructor(
                 state
             }
         }
-        Log.d(TAG, "Bot stopped speaking, marked last bot message as final")
+        // Reset flag so the next bot response will create a new message
+        botSpeaking = false
+        Log.d(TAG, "Bot stopped speaking, marked last bot message as final and reset botSpeaking flag")
     }
 
     private fun generateMessageId(): String = "${System.currentTimeMillis()}-${(0..999).random()}"

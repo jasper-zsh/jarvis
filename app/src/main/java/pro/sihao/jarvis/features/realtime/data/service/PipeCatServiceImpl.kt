@@ -278,6 +278,9 @@ class PipeCatServiceImpl @Inject constructor(
 
                 override fun onBotLLMText(data: MsgServerToClient.Data.BotLLMTextData) {
                     Log.i(TAG, "Bot LLM text: $data")
+                    val event = PipeCatEvent.BotLLMText(text = data.text, timestamp = Date())
+                    trySend(event)
+                    _eventFlow.tryEmit(event)
                     CxrApi.getInstance().sendTtsContent(data.text)
                 }
 

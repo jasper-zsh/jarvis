@@ -82,6 +82,7 @@ class PipeCatConnectionManager @Inject constructor(
 
             is PipeCatEvent.BotStartedSpeaking,
             is PipeCatEvent.BotStoppedSpeaking,
+            is PipeCatEvent.BotLLMText,
             is PipeCatEvent.AudioLevelChanged,
             is PipeCatEvent.Error,
             is PipeCatEvent.Disconnected,

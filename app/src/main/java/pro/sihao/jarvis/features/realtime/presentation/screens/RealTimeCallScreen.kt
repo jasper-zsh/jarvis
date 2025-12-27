@@ -50,7 +50,7 @@ fun RealTimeCallScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp)
+                .weight(1f)
         ) {
             ConversationDisplay(
                 transcripts = uiState.transcripts,

@@ -21,7 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import pro.sihao.jarvis.features.realtime.presentation.viewmodel.PipeCatViewModel
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.BotIndicator
-import pro.sihao.jarvis.features.realtime.presentation.components.realtime.AudioIndicator
+import pro.sihao.jarvis.features.realtime.presentation.components.realtime.CompactBotIndicator
 import pro.sihao.jarvis.features.realtime.presentation.components.realtime.ConversationDisplay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,6 +41,7 @@ fun RealTimeCallScreen(
     ) {
         // Header
         CallHeader(
+            connectionState = uiState.connectionState,
             modifier = Modifier.fillMaxWidth(),
             onClear = { pipeCatViewModel.clearTranscripts() }
         )
@@ -58,21 +59,6 @@ fun RealTimeCallScreen(
             )
         }
 
-        // Main call interface
-        CallInterface(
-            connectionState = uiState.connectionState,
-            isConnected = uiState.isConnected,
-            isConnecting = uiState.isConnecting,
-            microphoneEnabled = uiState.microphoneEnabled,
-            cameraEnabled = uiState.cameraEnabled,
-            onToggleMicrophone = pipeCatViewModel::toggleMicrophone,
-            onToggleCamera = pipeCatViewModel::toggleCamera,
-            onConnect = pipeCatViewModel::connectWithDefaultConfig,
-            onDisconnect = pipeCatViewModel::disconnect,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        )
 
         // Error message if present
         uiState.errorMessage?.let { errorMessage ->
@@ -101,6 +87,7 @@ fun RealTimeCallScreen(
 
 @Composable
 private fun CallHeader(
+    connectionState: PipeCatConnectionState,
     modifier: Modifier = Modifier,
     onClear: (() -> Unit)? = null
 ) {
@@ -112,17 +99,26 @@ private fun CallHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Real-time Voice Chat",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            // Left: Bot indicator + Title
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                CompactBotIndicator(connectionState = connectionState)
+                Text(
+                    text = "Real-time Voice Chat",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
 
+            // Right: Clear button
             onClear?.let { clearCallback ->
                 TextButton(onClick = clearCallback) {
                     Text("Clear")
@@ -132,310 +128,8 @@ private fun CallHeader(
     }
 }
 
-@Composable
-private fun CallInterface(
-    connectionState: PipeCatConnectionState,
-    isConnected: Boolean,
-    isConnecting: Boolean,
-    microphoneEnabled: Boolean,
-    cameraEnabled: Boolean,
-    onToggleMicrophone: (Boolean) -> Unit,
-    onToggleCamera: (Boolean) -> Unit,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            // Bot status and audio indicators
-            BotIndicator(
-                connectionState = connectionState,
-                showDetails = true
-            )
 
-            // Audio level indicators
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AudioIndicator(
-                    audioLevel = connectionState.userAudioLevel,
-                    isActive = connectionState.userIsSpeaking,
-                    isUser = true,
-                    modifier = Modifier.weight(1f)
-                )
 
-                Spacer(modifier = Modifier.width(32.dp))
-
-                AudioIndicator(
-                    audioLevel = connectionState.botAudioLevel,
-                    isActive = connectionState.botIsSpeaking,
-                    isUser = false,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            // Connection status
-            ConnectionStatusCard(
-                connectionState = connectionState,
-                isConnected = isConnected,
-                isConnecting = isConnecting,
-                onConnect = onConnect,
-                onDisconnect = onDisconnect
-            )
-
-            // Media controls
-            if (isConnected) {
-                MediaControls(
-                    microphoneEnabled = microphoneEnabled,
-                    cameraEnabled = cameraEnabled,
-                    onToggleMicrophone = onToggleMicrophone,
-                    onToggleCamera = onToggleCamera
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ConnectionStatusCard(
-    connectionState: PipeCatConnectionState,
-    isConnected: Boolean,
-    isConnecting: Boolean,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = when {
-            isConnecting -> MaterialTheme.colorScheme.primaryContainer
-            isConnected -> MaterialTheme.colorScheme.secondaryContainer
-            else -> MaterialTheme.colorScheme.surfaceVariant
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            when {
-                isConnecting -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Connecting to bot...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-                isConnected -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Connected",
-                            tint = MaterialTheme.colorScheme.secondary
-                        )
-                        Text(
-                            text = "Connected to bot",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-                else -> {
-                    Button(
-                        onClick = onConnect,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Phone,
-                            contentDescription = "Connect",
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Connect to Bot")
-                    }
-                }
-            }
-
-            // Connection quality indicator (when connected)
-            if (isConnected) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = when {
-                            connectionState.botReady -> MaterialTheme.colorScheme.primaryContainer
-                            else -> MaterialTheme.colorScheme.surfaceVariant
-                        }
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = when {
-                                connectionState.botReady -> "Bot Ready - Excellent Connection"
-                                else -> "Connecting..."
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-
-                        // Audio levels
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("User:", style = MaterialTheme.typography.bodySmall)
-                            LinearProgressIndicator(
-                                progress = connectionState.userAudioLevel,
-                                modifier = Modifier.width(60.dp)
-                            )
-                            Text("Bot:", style = MaterialTheme.typography.bodySmall)
-                            LinearProgressIndicator(
-                                progress = connectionState.botAudioLevel,
-                                modifier = Modifier.width(60.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MediaControls(
-    microphoneEnabled: Boolean,
-    cameraEnabled: Boolean,
-    onToggleMicrophone: (Boolean) -> Unit,
-    onToggleCamera: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Media Controls",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                MediaControlButton(
-                    icon = if (microphoneEnabled) Icons.Default.Mic else Icons.Default.MicOff,
-                    label = if (microphoneEnabled) "Mic On" else "Mic Off",
-                    isActive = microphoneEnabled,
-                    onClick = { onToggleMicrophone(!microphoneEnabled) }
-                )
-
-                MediaControlButton(
-                    icon = if (cameraEnabled) Icons.Default.Videocam else Icons.Default.VideocamOff,
-                    label = if (cameraEnabled) "Camera On" else "Camera Off",
-                    isActive = cameraEnabled,
-                    onClick = { onToggleCamera(!cameraEnabled) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MediaControlButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    isActive: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier
-                .size(56.dp)
-                .background(
-                    color = if (isActive) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    },
-                    shape = RoundedCornerShape(28.dp)
-                )
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (isActive) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-    }
-}
 
 @Composable
 private fun CallControls(

@@ -349,6 +349,15 @@ class PipeCatServiceImpl @Inject constructor(
                     _connectionState.update {
                         PipeCatConnectionState()
                     }
+
+                    // Notify glasses that session has ended
+                    try {
+                        CxrApi.getInstance().sendExitEvent()
+                        Log.d(TAG, "Sent exit event to glasses")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error sending exit event to glasses", e)
+                    }
+
                     trySend(PipeCatEvent.Disconnected)
                     _eventFlow.tryEmit(PipeCatEvent.Disconnected)
                 }
@@ -386,12 +395,14 @@ class PipeCatServiceImpl @Inject constructor(
                     data: LLMFunctionCallData,
                     onResult: (Value) -> Unit
                 ) {
-                    Log.d(TAG, "CloseWhenNothingToDo invoked")
+                    Log.d(TAG, "CloseWhenNothingToDo invoked - triggering disconnect")
                     try {
-                        // Send event to channelFlow from any context
-                        trySend(PipeCatEvent.Bye)
+                        // Trigger disconnect - this will call onDisconnected() which sends exit event
+                        CoroutineScope(Dispatchers.Main).launch {
+                            pipecatClient?.disconnect()?.displayErrors()
+                        }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error sending Bye event", e)
+                        Log.e(TAG, "Error triggering disconnect", e)
                     }
                     onResult(Value.Object())
                 }

@@ -76,10 +76,7 @@ class PipeCatConnectionManager @Inject constructor(
                 }
             }
 
-            is PipeCatEvent.Bye -> {
-                CxrApi.getInstance().sendExitEvent()
-            }
-
+            is PipeCatEvent.Bye,
             is PipeCatEvent.BotStartedSpeaking,
             is PipeCatEvent.BotStoppedSpeaking,
             is PipeCatEvent.BotLLMText,

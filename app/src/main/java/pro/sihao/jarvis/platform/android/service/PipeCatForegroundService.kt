@@ -72,6 +72,7 @@ class PipeCatForegroundService : Service() {
     private var isServiceRunning = false
     private var isActiveSession = false
     private var lastNotificationTime = 0L
+    private var wasConnected = false
 
     override fun onCreate() {
         super.onCreate()
@@ -332,42 +333,6 @@ class PipeCatForegroundService : Service() {
         return builder.build()
     }
 
-    private fun updateNotification() {
-        val connectionState = pipeCatService.connectionState.value
-
-        val (title, content) = when {
-            connectionState.isConnecting -> "Jarvis Voice Assistant" to "Connecting..."
-            connectionState.isConnected && connectionState.botReady -> "Jarvis Active" to "Voice assistant ready - Tap to interact"
-            connectionState.isConnected -> "Jarvis Connected" to "Initializing assistant..."
-            connectionState.errorMessage != null -> "Jarvis Error" to "Connection error: ${connectionState.errorMessage}"
-            else -> "Jarvis Voice Assistant" to "Standby - Ready to connect"
-        }
-
-        val notification = createNotification(
-            title = title,
-            content = content,
-            isConnected = connectionState.isConnected,
-            isBotReady = connectionState.botReady
-        )
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun startNotificationUpdates() {
-        notificationJob?.cancel()
-
-        notificationJob = serviceScope.launch {
-            try {
-                pipeCatService.connectionState.collect { _ ->
-                    updateNotification()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error updating notifications", e)
-            }
-        }
-    }
-
     /**
      * 更新常驻服务通知
      */
@@ -480,6 +445,14 @@ class PipeCatForegroundService : Service() {
             try {
                 // 低频监控连接状态变化
                 pipeCatService.connectionState.collect { state ->
+                    // FIX: Reset isActiveSession when connection is lost
+                    // This handles remote disconnects where isActiveSession wasn't reset
+                    if (wasConnected && !state.isConnected) {
+                        Log.d(TAG, "Connection lost - resetting isActiveSession to allow reconnection")
+                        isActiveSession = false
+                    }
+                    wasConnected = state.isConnected
+
                     // 仅在状态真正变化时更新通知
                     if (state.isConnected || state.botReady || state.errorMessage != null) {
                         updateNotificationForActiveSession()

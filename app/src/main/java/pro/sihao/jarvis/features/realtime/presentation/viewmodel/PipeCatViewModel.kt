@@ -62,10 +62,6 @@ class PipeCatViewModel @Inject constructor(
                         Log.d(TAG, "Handling BotLLMText: ${event.text}")
                         handleBotLLMText(event.text, event.timestamp)
                     }
-                    is PipeCatEvent.BotResponse -> {
-                        Log.d(TAG, "Handling BotResponse: ${event.text}")
-                        handleBotTranscript(event.text, event.timestamp)
-                    }
                     is PipeCatEvent.BotStartedSpeaking -> {
                         Log.d(TAG, "Handling BotStartedSpeaking")
                         handleBotStartedSpeaking(event.timestamp)
@@ -158,56 +154,6 @@ class PipeCatViewModel @Inject constructor(
                     timestamp = timestamp,
                     isFinal = false
                 )
-            }
-            state.copy(transcripts = updated)
-        }
-    }
-
-    private fun handleBotTranscript(text: String, timestamp: Date) {
-        _uiState.update { state ->
-            val transcripts = state.transcripts
-            val updated = if (botSpeaking) {
-                // Append to last bot message
-                val lastIndex = transcripts.indexOfLast { it.role == MessageRole.BOT }
-                if (lastIndex >= 0) {
-                    transcripts.toMutableList().apply {
-                        val lastMsg = transcripts[lastIndex]
-                        set(lastIndex, lastMsg.copy(text = lastMsg.text + text, timestamp = timestamp))
-                    }
-                } else {
-                    // Fallback: no bot message exists, create new one
-                    botSpeaking = true
-                    transcripts + TranscriptMessage(
-                        id = generateMessageId(),
-                        role = MessageRole.BOT,
-                        text = text,
-                        timestamp = timestamp
-                    )
-                }
-            } else {
-                // Check if we should append to the last bot message instead of creating new
-                val lastBotIndex = transcripts.indexOfLast { it.role == MessageRole.BOT }
-                val shouldAppend = lastBotIndex >= 0 &&
-                    !transcripts[lastBotIndex].isFinal &&
-                    (timestamp.time - transcripts[lastBotIndex].timestamp.time) < 5000 // Within 5 seconds
-
-                if (shouldAppend) {
-                    // Append to existing bot message (same round)
-                    botSpeaking = true
-                    transcripts.toMutableList().apply {
-                        val lastMsg = transcripts[lastBotIndex]
-                        set(lastBotIndex, lastMsg.copy(text = lastMsg.text + text, timestamp = timestamp))
-                    }
-                } else {
-                    // Create new bot message
-                    botSpeaking = true
-                    transcripts + TranscriptMessage(
-                        id = generateMessageId(),
-                        role = MessageRole.BOT,
-                        text = text,
-                        timestamp = timestamp
-                    )
-                }
             }
             state.copy(transcripts = updated)
         }

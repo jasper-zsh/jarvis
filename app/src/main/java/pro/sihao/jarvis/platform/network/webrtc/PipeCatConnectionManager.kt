@@ -27,9 +27,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class PipeCatConnectionManager @Inject constructor(
-    @ApplicationContext private val context: Context,
     private val pipeCatService: PipeCatService,
-    private val configurationManager: ConfigurationManager
 ) {
     companion object {
         private const val TAG = "PipeCatConnectionManager"

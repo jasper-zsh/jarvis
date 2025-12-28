@@ -39,8 +39,6 @@ class PipeCatServiceManager @Inject constructor(
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
     }
 
-    private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
-
     /**
      * 启动常驻PipeCat服务
      */
@@ -119,33 +117,6 @@ class PipeCatServiceManager @Inject constructor(
             Log.d(TAG, "PipeCat foreground service stop command sent")
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping PipeCat foreground service", e)
-        }
-    }
-
-    /**
-     * Check if notification permission is granted (Android 13+)
-     */
-    fun hasNotificationPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true // Permission not required before Android 13
-        }
-    }
-
-    /**
-     * Request notification permission from activity (Android 13+)
-     */
-    fun requestNotificationPermission(activity: Activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ActivityCompat.requestPermissions(
-                activity,
-                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                NOTIFICATION_PERMISSION_REQUEST_CODE
-            )
         }
     }
 
@@ -279,18 +250,6 @@ class PipeCatServiceManager @Inject constructor(
             pipeCatService.toggleCamera(enabled)
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling camera", e)
-        }
-    }
-
-    /**
-     * Clean up resources when the manager is no longer needed
-     */
-    fun cleanup() {
-        try {
-            serviceScope.cancel()
-            Log.d(TAG, "PipeCatServiceManager cleaned up")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during cleanup", e)
         }
     }
 }

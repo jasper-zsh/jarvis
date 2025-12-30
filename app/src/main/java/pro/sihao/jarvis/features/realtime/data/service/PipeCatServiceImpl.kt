@@ -21,6 +21,8 @@ import ai.pipecat.client.types.Transcript
 import ai.pipecat.client.types.TransportState as PipecatTransportState
 import ai.pipecat.client.types.Value
 import com.rokid.cxr.client.extend.CxrApi
+import com.rokid.cxr.client.extend.callbacks.PhotoResultCallback
+import com.rokid.cxr.client.utils.ValueUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -50,9 +52,12 @@ import pro.sihao.jarvis.core.domain.model.TransportState as AppTransportState
 import pro.sihao.jarvis.core.domain.service.PipeCatService
 import pro.sihao.jarvis.platform.network.webrtc.PipeCatConnectionManager
 import java.util.Date
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.io.encoding.Base64
+import kotlin.uuid.Uuid
 
 /**
  * Implementation of PipeCatService using PipeCat SDK
@@ -348,6 +353,47 @@ class PipeCatServiceImpl @Inject constructor(
                         Log.w(TAG, "SetBrightness wrong args")
                     }
                 }
+            })
+            pipecatClient?.registerFunctionCallHandler("TakePhoto", object : LLMFunctionCallHandler {
+                override fun handleFunctionCall(
+                    data: LLMFunctionCallData,
+                    onResult: (Value) -> Unit
+                ) {
+                    val result = CxrApi.getInstance().takeGlassPhoto(640, 480, 80, object : PhotoResultCallback {
+                        override fun onPhotoResult(
+                            p0: ValueUtil.CxrStatus?,
+                            p1: ByteArray?
+                        ) {
+                            if (p1 != null) {
+                                val picUuid = UUID.randomUUID().toString()
+                                val encoded = Base64.encode(p1)
+                                try {
+                                    CoroutineScope(Dispatchers.IO).launch {
+                                        pipecatClient?.sendClientRequest(
+                                            "pic-result", Value.Object(
+                                                Pair("uuid", Value.Str(picUuid)),
+                                                Pair("data", Value.Str(encoded))
+                                            )
+                                        )?.await()
+                                        onResult(Value.Str("Photo save as uuid $picUuid"))
+                                        Log.i(TAG, "Took photo and sent to bot successfully")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to send photo to bot $e")
+                                    onResult(Value.Str("Photo has been taken, but failed to send: $e"))
+                                }
+                            } else {
+                                Log.e(TAG, "Failed to take photo: $p0")
+                                onResult(Value.Str("Failed to take photo: $p0"))
+                            }
+                        }
+
+                    })
+                    if (result != ValueUtil.CxrStatus.REQUEST_SUCCEED) {
+                        onResult(Value.Str("Failed to requeat take photo: $result"))
+                    }
+                }
+
             })
 
             // Build API request headers

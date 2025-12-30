@@ -3,5 +3,6 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/pipecat-examples" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/voice-ui-kit" vcs="Git" />
   </component>
 </project>

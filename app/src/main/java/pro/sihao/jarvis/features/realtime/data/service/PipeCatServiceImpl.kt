@@ -1,10 +1,6 @@
 package pro.sihao.jarvis.features.realtime.data.service
 
 import android.content.Context
-import android.media.AudioManager
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothProfile
 import android.util.Log
 import ai.pipecat.client.PipecatClient
 import ai.pipecat.client.PipecatClientOptions
@@ -61,9 +57,9 @@ import javax.inject.Singleton
 /**
  * Implementation of PipeCatService using PipeCat SDK
  *
- * This service handles real-time voice communication with automatic Bluetooth audio routing.
- * When glasses or other Bluetooth headsets are connected, it configures Android AudioManager
- * to use Bluetooth SCO for voice-quality audio input/output.
+ * This service handles real-time voice communication with CxrApi device management.
+ * Uses CxrApi.setCommunicationDevice() and CxrApi.clearCommunicationDevice()
+ * for audio device routing during pipecat sessions.
  */
 @Singleton
 class PipeCatServiceImpl @Inject constructor(
@@ -75,12 +71,6 @@ class PipeCatServiceImpl @Inject constructor(
     }
 
     private var pipecatClient: PipecatClient<*, *>? = null
-    private val audioManager: AudioManager by lazy {
-        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    }
-
-    private var originalAudioMode: Int = AudioManager.MODE_NORMAL
-    private var originalSpeakerphoneOn: Boolean = false
 
     // Extension function for error handling
     private fun <E> Future<E, RTVIError>.displayErrors() = withErrorCallback { error ->
@@ -104,93 +94,28 @@ class PipeCatServiceImpl @Inject constructor(
     private var isSessionActive = false
 
     /**
-     * Check if Bluetooth SCO (Synchronous Connection-Oriented) headset is available
-     */
-    private fun isBluetoothHeadsetAvailable(): Boolean {
-        return try {
-            audioManager.isBluetoothScoAvailableOffCall
-        } catch (e: Exception) {
-            Log.w(TAG, "Error checking Bluetooth SCO availability", e)
-            false
-        }
-    }
-
-    /**
-     * Check if any Bluetooth headset is connected (including glasses)
-     */
-    private fun isBluetoothHeadsetConnected(): Boolean {
-        return try {
-            val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-            bluetoothAdapter?.let { adapter ->
-                // Check if there are any connected Bluetooth devices that could be headsets
-                adapter.bondedDevices.any { device ->
-                    // Check for common headset/profile characteristics or if glasses are connected
-                    device.bluetoothClass?.let { deviceClass ->
-                        val deviceClassValue = deviceClass.deviceClass
-                        // Audio headset device class
-                        deviceClassValue == 0x2404 ||
-                        deviceClassValue == 0x2408 ||
-                        deviceClassValue == 0x240C ||
-                        device.name?.contains("Glasses", ignoreCase = true) == true
-                    } ?: false
-                }
-            } ?: false
-        } catch (e: Exception) {
-            Log.w(TAG, "Error checking Bluetooth headset connection", e)
-            false
-        }
-    }
-
-    /**
-     * Configure audio routing for Bluetooth headset when available
+     * Configure audio routing for communication device using CxrApi
      */
     private fun configureBluetoothAudio() {
         try {
-            if (isBluetoothHeadsetConnected() && isBluetoothHeadsetAvailable()) {
-                // Save current audio state
-                originalAudioMode = audioManager.mode
-                originalSpeakerphoneOn = audioManager.isSpeakerphoneOn
-
-                Log.i(TAG, "Configuring Bluetooth SCO audio for voice communication")
-
-                // Start Bluetooth SCO for voice communication
-                audioManager.startBluetoothSco()
-
-                // Wait for SCO to establish
-                Thread.sleep(1000)
-
-                // Set communication mode
-                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-                audioManager.isSpeakerphoneOn = false // Route through Bluetooth, not speaker
-
-                Log.i(TAG, "Bluetooth SCO audio configured successfully")
-            } else {
-                Log.w(TAG, "Bluetooth headset not connected or SCO not available, using default audio routing")
-                // Still set communication mode for better voice input handling
-                originalAudioMode = audioManager.mode
-                originalSpeakerphoneOn = audioManager.isSpeakerphoneOn
-                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            }
+            Log.i(TAG, "Setting communication device for pipecat session")
+            CxrApi.getInstance().setCommunicationDevice()
+            Log.i(TAG, "Communication device set successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error configuring Bluetooth audio", e)
+            Log.e(TAG, "Error setting communication device", e)
         }
     }
 
     /**
-     * Restore original audio routing
+     * Restore audio routing by clearing communication device
      */
     private fun restoreAudioRouting() {
         try {
-            // Stop Bluetooth SCO if it was started
-            audioManager.stopBluetoothSco()
-
-            // Restore original audio mode and speaker state
-            audioManager.mode = originalAudioMode
-            audioManager.isSpeakerphoneOn = originalSpeakerphoneOn
-
-            Log.i(TAG, "Audio routing restored to original state")
+            Log.i(TAG, "Clearing communication device")
+            CxrApi.getInstance().clearCommunicationDevice()
+            Log.i(TAG, "Communication device cleared successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error restoring audio routing", e)
+            Log.e(TAG, "Error clearing communication device", e)
         }
     }
 
@@ -201,10 +126,9 @@ class PipeCatServiceImpl @Inject constructor(
                 stopRealtimeSession()
             }
 
-            // Configure Bluetooth audio if available (glasses as headset)
-            val bluetoothConnected = isBluetoothHeadsetConnected()
+            // Configure communication device
             configureBluetoothAudio()
-            Log.i(TAG, "PipeCat session started - ${if (bluetoothConnected) "Bluetooth headset connected, using Bluetooth audio" else "using default audio routing"}")
+            Log.i(TAG, "PipeCat session started with CxrApi communication device")
 
             // Update connection state to connecting
             _connectionState.update {
@@ -346,6 +270,10 @@ class PipeCatServiceImpl @Inject constructor(
                 override fun onDisconnected() {
                     Log.i(TAG, "Disconnected")
                     isSessionActive = false
+
+                    // Restore audio routing by clearing communication device
+                    restoreAudioRouting()
+
                     _connectionState.update {
                         PipeCatConnectionState()
                     }
@@ -443,6 +371,13 @@ class PipeCatServiceImpl @Inject constructor(
             pipecatClient?.startBotAndConnect(apiRequest)?.displayErrors()?.withErrorCallback {
                 // Session ended or disconnected
                 isSessionActive = false
+
+                // Restore audio routing in case of error
+                try {
+                    restoreAudioRouting()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error restoring audio routing during error callback", e)
+                }
             }
 
 
@@ -459,6 +394,14 @@ class PipeCatServiceImpl @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error starting PipeCat session", e)
             isSessionActive = false
+
+            // Restore audio routing in case of error
+            try {
+                restoreAudioRouting()
+            } catch (restoreError: Exception) {
+                Log.e(TAG, "Error restoring audio routing during exception handling", restoreError)
+            }
+
             _connectionState.update {
                 it.copy(
                     errorMessage = e.message ?: "Unknown error",

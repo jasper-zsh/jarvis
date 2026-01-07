@@ -9,7 +9,18 @@
       "mcp__zread__get_repo_structure",
       "Bash(adb logcat:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(xargs:*)",
+      "Bash(unzip:*)",
+      "Bash(while read f)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(done)",
+      "mcp__zread__search_doc",
+      "mcp__web-search-prime__webSearchPrime",
+      "mcp__zread__read_file",
+      "WebSearch",
+      "mcp__web-reader__webReader",
+      "Bash(curl:*)"
     ]
   }
 }

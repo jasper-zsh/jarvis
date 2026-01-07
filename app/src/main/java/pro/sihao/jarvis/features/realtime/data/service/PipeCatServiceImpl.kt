@@ -7,7 +7,6 @@ import ai.pipecat.client.PipecatClientOptions
 import ai.pipecat.client.PipecatEventCallbacks
 import ai.pipecat.client.result.Future
 import ai.pipecat.client.result.RTVIError
-import ai.pipecat.client.small_webrtc_transport.SmallWebRTCTransport
 import ai.pipecat.client.transport.MsgServerToClient
 import ai.pipecat.client.types.APIRequest
 import ai.pipecat.client.types.BotOutputData
@@ -50,7 +49,8 @@ import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
 import pro.sihao.jarvis.core.domain.model.TransportState as AppTransportState
 import pro.sihao.jarvis.core.domain.service.PipeCatService
-import pro.sihao.jarvis.platform.network.webrtc.PipeCatConnectionManager
+import pro.sihao.jarvis.platform.android.connection.GlassesConnectionManager
+import pro.sihao.jarvis.pipecat.WebSocketTransport
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -68,7 +68,8 @@ import kotlin.uuid.Uuid
  */
 @Singleton
 class PipeCatServiceImpl @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val glassesConnectionManager: GlassesConnectionManager
 ) : PipeCatService {
 
     companion object {
@@ -315,10 +316,10 @@ class PipeCatServiceImpl @Inject constructor(
                 callbacks = callbacks
             )
 
-            // Initialize PipeCat client with SmallWebRTC transport on main thread
+            // Initialize PipeCat client with WebSocket transport on main thread
             pipecatClient = withContext(Dispatchers.Main) {
                 PipecatClient(
-                    transport = SmallWebRTCTransport(context),
+                    transport = WebSocketTransport(context, glassesConnectionManager),
                     options = options
                 )
             }
@@ -408,7 +409,7 @@ class PipeCatServiceImpl @Inject constructor(
 
             // Start bot and connect
             val apiRequest = APIRequest(
-                endpoint = config.baseUrl,
+                endpoint = config.baseUrl + "/start",
                 requestData = Value.Object(),
                 headers = headers
             )

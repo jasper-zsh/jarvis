@@ -35,13 +35,16 @@ class PipeCatViewModel @Inject constructor(
 
     private fun observeConnectionState() {
         viewModelScope.launch {
+            // Observe connection state
             pipeCatServiceManager.connectionState.collect { state ->
                 _uiState.update {
                     it.copy(
                         connectionState = state,
                         isConnecting = state.isConnecting,
                         isConnected = state.isConnected,
-                        errorMessage = state.errorMessage
+                        errorMessage = state.errorMessage,
+                        isManuallyDisconnected = state.isManuallyDisconnected,
+                        canAutoReconnect = state.connectionManagementState.isAutoReconnectEnabled
                     )
                 }
             }
@@ -328,14 +331,46 @@ class PipeCatViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * Manual disconnect (pauses auto-reconnect)
+     */
+    fun manualDisconnect() {
+        viewModelScope.launch {
+            try {
+                pipeCatServiceManager.manualDisconnect()
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(errorMessage = "Failed to disconnect: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Manual reconnect (resumes auto-reconnect)
+     */
+    fun manualReconnect() {
+        viewModelScope.launch {
+            try {
+                pipeCatServiceManager.manualReconnect()
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(errorMessage = "Failed to reconnect: ${e.message}")
+                }
+            }
+        }
+    }
 }
 
 data class PipeCatUiState(
     val connectionState: PipeCatConnectionState = PipeCatConnectionState(),
     val isConnecting: Boolean = false,
     val isConnected: Boolean = false,
-    val microphoneEnabled: Boolean = true,
+    val microphoneEnabled: Boolean = false,
     val cameraEnabled: Boolean = false,
     val errorMessage: String? = null,
-    val transcripts: List<TranscriptMessage> = emptyList()
+    val transcripts: List<TranscriptMessage> = emptyList(),
+    val isManuallyDisconnected: Boolean = false,
+    val canAutoReconnect: Boolean = true
 )

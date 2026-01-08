@@ -64,6 +64,8 @@ class PipeCatForegroundService : Service() {
         const val ACTION_RETURN_TO_APP = "return_to_app"
         const val ACTION_ACTIVATE_SESSION = "activate_session"
         const val ACTION_DEACTIVATE_SESSION = "deactivate_session"
+        const val ACTION_MANUAL_DISCONNECT = "manual_disconnect"
+        const val ACTION_MANUAL_RECONNECT = "manual_reconnect"
     }
 
     // 服务状态管理
@@ -80,6 +82,7 @@ class PipeCatForegroundService : Service() {
         createNotificationChannel()
         initializeGlassesIntegration()
         startServiceAsPersistent()
+        startPersistentConnection()
         Log.i(TAG, "常驻服务初始化完成")
     }
 
@@ -99,6 +102,18 @@ class PipeCatForegroundService : Service() {
             ACTION_DEACTIVATE_SESSION -> {
                 Log.d(TAG, "停用PipeCat会话")
                 deactivatePipeCatSession()
+            }
+            ACTION_MANUAL_DISCONNECT -> {
+                Log.d(TAG, "手动断开连接")
+                serviceScope.launch {
+                    pipeCatService.manualDisconnect()
+                }
+            }
+            ACTION_MANUAL_RECONNECT -> {
+                Log.d(TAG, "手动重新连接")
+                serviceScope.launch {
+                    pipeCatService.manualReconnect()
+                }
             }
             ACTION_STOP_SERVICE -> {
                 Log.d(TAG, "停止服务命令")
@@ -146,6 +161,25 @@ class PipeCatForegroundService : Service() {
             Log.e(TAG, "启动常驻服务失败", e)
             isServiceRunning = false
             stopSelf()
+        }
+    }
+
+    /**
+     * Start persistent PipeCat connection immediately on service startup
+     */
+    private fun startPersistentConnection() {
+        serviceScope.launch {
+            try {
+                Log.i(TAG, "Starting persistent PipeCat connection")
+
+                val config = configurationManager.getCurrentConfig()
+                pipeCatConnectionManager.connect(config)
+
+                Log.i(TAG, "Persistent connection initiated")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start persistent connection", e)
+                // Service will handle auto-reconnect through PipeCatServiceImpl
+            }
         }
     }
 
@@ -468,34 +502,45 @@ class PipeCatForegroundService : Service() {
 
     /**
      * Handle glasses session state changes
+     * Controls microphone instead of connection (connection is now persistent)
      */
     private fun handleGlassesSessionStateChange(isAiAssistRunning: Boolean) {
         serviceScope.launch {
             try {
                 val connectionState = pipeCatService.connectionState.value
-                Log.d(TAG, "Glasses AI assist state changed: isRunning=$isAiAssistRunning, isConnected=${connectionState.isConnected}")
+                val mgmtState = connectionState.connectionManagementState
 
-                when {
-                    isAiAssistRunning && !connectionState.isConnected -> {
-                        Log.d(TAG, "Glasses AI assist started - connecting PipeCat")
-                        try {
-                            activatePipeCatSession()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error auto-connecting PipeCat for glasses", e)
-                        }
+                Log.d(TAG, "Glasses AI assist state changed: isRunning=$isAiAssistRunning, " +
+                          "isConnected=${connectionState.isConnected}, " +
+                          "isManuallyDisconnected=${mgmtState.isManuallyDisconnected}")
+
+                // Update glasses awake state
+                if (isAiAssistRunning && !mgmtState.isGlassesAwake) {
+                    Log.d(TAG, "Glasses woke up")
+
+                    // Only open mic if connected and not manually disconnected
+                    if (connectionState.isConnected && !mgmtState.isManuallyDisconnected) {
+                        Log.d(TAG, "Opening microphone on glasses wake-up")
+                        pipeCatService.toggleMicrophone(true)
+                    } else if (mgmtState.isManuallyDisconnected) {
+                        Log.d(TAG, "Glasses woke up but connection is manually disconnected, ignoring")
                     }
-                    !isAiAssistRunning && connectionState.isConnected -> {
-                        Log.d(TAG, "Glasses AI assist stopped - disconnecting PipeCat")
-                        try {
-                            deactivatePipeCatSession()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error auto-disconnecting PipeCat for glasses", e)
-                        }
+
+                    // Update glasses awake state in connection management
+                    pipeCatService.connectionManagementState.value.let { currentState ->
+                        // Note: We can't directly update _connectionManagementState from here,
+                        // but the glasses state is tracked for reference in manualReconnect()
                     }
-                    else -> {
-                        Log.d(TAG, "No action needed - glasses state consistent with PipeCat connection")
+                } else if (!isAiAssistRunning && mgmtState.isGlassesAwake) {
+                    Log.d(TAG, "Glasses went to sleep")
+
+                    // Close microphone on sleep
+                    if (connectionState.isConnected) {
+                        Log.d(TAG, "Closing microphone on glasses sleep")
+                        pipeCatService.toggleMicrophone(false)
                     }
                 }
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling glasses session state change", e)
             }

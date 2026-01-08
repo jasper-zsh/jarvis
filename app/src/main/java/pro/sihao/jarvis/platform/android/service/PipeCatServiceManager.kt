@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
+import pro.sihao.jarvis.core.domain.model.ConnectionManagementState
 import pro.sihao.jarvis.core.domain.service.PipeCatService
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -250,6 +251,44 @@ class PipeCatServiceManager @Inject constructor(
             pipeCatService.toggleCamera(enabled)
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling camera", e)
+        }
+    }
+
+    /**
+     * Check if manually disconnected
+     */
+    val isManuallyDisconnected: StateFlow<Boolean>
+        get() = pipeCatService.isManuallyDisconnected
+
+    /**
+     * Get connection management state
+     */
+    val connectionManagementState: StateFlow<ConnectionManagementState>
+        get() = pipeCatService.connectionManagementState
+
+    /**
+     * Manual disconnect (pauses auto-reconnect)
+     */
+    suspend fun manualDisconnect() {
+        try {
+            Log.d(TAG, "Manual disconnect requested")
+            pipeCatService.manualDisconnect()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in manual disconnect", e)
+            throw e
+        }
+    }
+
+    /**
+     * Manual reconnect (resumes auto-reconnect)
+     */
+    suspend fun manualReconnect() {
+        try {
+            Log.d(TAG, "Manual reconnect requested")
+            pipeCatService.manualReconnect()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in manual reconnect", e)
+            throw e
         }
     }
 }

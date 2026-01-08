@@ -75,11 +75,12 @@ fun RealTimeCallScreen(
             isConnected = uiState.isConnected,
             isConnecting = uiState.isConnecting,
             microphoneEnabled = uiState.microphoneEnabled,
-            cameraEnabled = uiState.cameraEnabled,
+            isManuallyDisconnected = uiState.isManuallyDisconnected,
             onToggleMicrophone = pipeCatViewModel::toggleMicrophone,
-            onToggleCamera = pipeCatViewModel::toggleCamera,
             onEndCall = pipeCatViewModel::disconnect,
             onConnect = pipeCatViewModel::connectWithDefaultConfig,
+            onManualDisconnect = pipeCatViewModel::manualDisconnect,
+            onManualReconnect = pipeCatViewModel::manualReconnect,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -136,11 +137,12 @@ private fun CallControls(
     isConnected: Boolean,
     isConnecting: Boolean,
     microphoneEnabled: Boolean,
-    cameraEnabled: Boolean,
+    isManuallyDisconnected: Boolean,
     onToggleMicrophone: (Boolean) -> Unit,
-    onToggleCamera: (Boolean) -> Unit,
     onEndCall: () -> Unit,
     onConnect: () -> Unit,
+    onManualDisconnect: () -> Unit,
+    onManualReconnect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -156,7 +158,25 @@ private fun CallControls(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isConnected) {
+            if (isManuallyDisconnected) {
+                // Show reconnect button when manually disconnected
+                IconButton(
+                    onClick = onManualReconnect,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Phone,
+                        contentDescription = "Reconnect",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            } else if (isConnected) {
                 // Microphone toggle
                 IconButton(
                     onClick = { onToggleMicrophone(!microphoneEnabled) },
@@ -183,46 +203,15 @@ private fun CallControls(
                     )
                 }
 
-                // Camera toggle
+                // Small manual disconnect button
                 IconButton(
-                    onClick = { onToggleCamera(!cameraEnabled) },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(
-                            color = if (cameraEnabled) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            },
-                            shape = RoundedCornerShape(24.dp)
-                        )
+                    onClick = onManualDisconnect,
+                    modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
-                        imageVector = if (cameraEnabled) Icons.Default.Videocam else Icons.Default.VideocamOff,
-                        contentDescription = if (cameraEnabled) "Camera Off" else "Camera On",
-                        tint = if (cameraEnabled) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                // End call
-                IconButton(
-                    onClick = onEndCall,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = RoundedCornerShape(24.dp)
-                        )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CallEnd,
-                        contentDescription = "End Call",
-                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Disconnect",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(24.dp)
                     )
                 }

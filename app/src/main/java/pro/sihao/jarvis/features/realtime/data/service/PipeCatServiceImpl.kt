@@ -41,14 +41,21 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
+import pro.sihao.jarvis.core.domain.model.ConnectionManagementState
+import pro.sihao.jarvis.core.domain.model.ConnectionMode
+import pro.sihao.jarvis.core.domain.model.MicrophoneState
 import pro.sihao.jarvis.core.domain.model.TransportState as AppTransportState
 import pro.sihao.jarvis.core.domain.service.PipeCatService
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import pro.sihao.jarvis.platform.android.connection.GlassesConnectionManager
 import pro.sihao.jarvis.pipecat.WebSocketTransport
 import java.util.Date
@@ -69,7 +76,8 @@ import kotlin.uuid.Uuid
 @Singleton
 class PipeCatServiceImpl @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val glassesConnectionManager: GlassesConnectionManager
+    private val glassesConnectionManager: GlassesConnectionManager,
+    private val configurationManager: pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager
 ) : PipeCatService {
 
     companion object {
@@ -99,31 +107,17 @@ class PipeCatServiceImpl @Inject constructor(
     // Real-time session management
     private var isSessionActive = false
 
-    /**
-     * Configure audio routing for communication device using CxrApi
-     */
-    private fun configureBluetoothAudio() {
-        try {
-            Log.i(TAG, "Setting communication device for pipecat session")
-            CxrApi.getInstance().setCommunicationDevice()
-            Log.i(TAG, "Communication device set successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting communication device", e)
-        }
-    }
+    // Connection management state
+    private val _connectionManagementState = MutableStateFlow(ConnectionManagementState())
+    override val connectionManagementState: StateFlow<ConnectionManagementState> =
+        _connectionManagementState.asStateFlow()
 
-    /**
-     * Restore audio routing by clearing communication device
-     */
-    private fun restoreAudioRouting() {
-        try {
-            Log.i(TAG, "Clearing communication device")
-            CxrApi.getInstance().clearCommunicationDevice()
-            Log.i(TAG, "Communication device cleared successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error clearing communication device", e)
-        }
-    }
+    private val _isManuallyDisconnected = MutableStateFlow(false)
+    override val isManuallyDisconnected: StateFlow<Boolean> =
+        _isManuallyDisconnected.asStateFlow()
+
+    private var autoReconnectJob: Job? = null
+    private val connectionMutex = Mutex()
 
     override suspend fun startRealtimeSession(config: PipeCatConfig): Flow<PipeCatEvent> = channelFlow {
         try {
@@ -132,9 +126,8 @@ class PipeCatServiceImpl @Inject constructor(
                 stopRealtimeSession()
             }
 
-            // Configure communication device
-            configureBluetoothAudio()
-            Log.i(TAG, "PipeCat session started with CxrApi communication device")
+            // Audio routing is handled by CxrApi in GlassesMicAudioSource
+            Log.i(TAG, "PipeCat session started (audio routing via CxrApi only)")
 
             // Update connection state to connecting
             _connectionState.update {
@@ -277,11 +270,22 @@ class PipeCatServiceImpl @Inject constructor(
                     Log.i(TAG, "Disconnected")
                     isSessionActive = false
 
-                    // Restore audio routing by clearing communication device
-                    restoreAudioRouting()
+                    // Handle auto-reconnect if not manually disconnected
+                    if (!_isManuallyDisconnected.value) {
+                        scheduleAutoReconnect()
+                    }
 
                     _connectionState.update {
-                        PipeCatConnectionState()
+                        PipeCatConnectionState(
+                            connectionManagementState = _connectionManagementState.value.copy(
+                                connectionMode = if (_isManuallyDisconnected.value) {
+                                    ConnectionMode.MANUALLY_DISCONNECTED
+                                } else {
+                                    ConnectionMode.AUTO_DISCONNECTED
+                                }
+                            ),
+                            isManuallyDisconnected = _isManuallyDisconnected.value
+                        )
                     }
 
                     // Notify glasses that session has ended
@@ -419,11 +423,11 @@ class PipeCatServiceImpl @Inject constructor(
                 // Session ended or disconnected
                 isSessionActive = false
 
-                // Restore audio routing in case of error
+                // Audio routing is handled by CxrApi in GlassesMicAudioSource
                 try {
-                    restoreAudioRouting()
+                    // No action needed for audio routing
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error restoring audio routing during error callback", e)
+                    Log.e(TAG, "Error during error callback", e)
                 }
             }
 
@@ -444,9 +448,9 @@ class PipeCatServiceImpl @Inject constructor(
 
             // Restore audio routing in case of error
             try {
-                restoreAudioRouting()
+                // Audio routing is handled by CxrApi in GlassesMicAudioSource
             } catch (restoreError: Exception) {
-                Log.e(TAG, "Error restoring audio routing during exception handling", restoreError)
+                Log.e(TAG, "Error during exception handling", restoreError)
             }
 
             _connectionState.update {
@@ -480,12 +484,14 @@ class PipeCatServiceImpl @Inject constructor(
                 pipecatClient = null
             }
 
-            // Restore original audio routing
-            restoreAudioRouting()
-            Log.i(TAG, "PipeCat session ended - audio routing restored")
+            // Audio routing is handled by CxrApi in GlassesMicAudioSource
+            Log.i(TAG, "PipeCat session ended")
 
             _connectionState.update {
-                PipeCatConnectionState()
+                PipeCatConnectionState(
+                    connectionManagementState = _connectionManagementState.value,
+                    isManuallyDisconnected = _isManuallyDisconnected.value
+                )
             }
 
         } catch (e: Exception) {
@@ -504,6 +510,11 @@ class PipeCatServiceImpl @Inject constructor(
             }
             _connectionState.update {
                 it.copy(config = it.config?.copy(enableMic = enabled))
+            }
+            _connectionManagementState.update {
+                it.copy(
+                    microphoneState = if (enabled) MicrophoneState.OPEN else MicrophoneState.CLOSED
+                )
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling microphone", e)
@@ -528,5 +539,144 @@ class PipeCatServiceImpl @Inject constructor(
                 it.copy(errorMessage = e.message ?: "Camera error")
             }
         }
+    }
+
+    private fun scheduleAutoReconnect() {
+        autoReconnectJob?.cancel()
+
+        val currentState = _connectionManagementState.value
+        if (!currentState.isAutoReconnectEnabled) {
+            Log.d(TAG, "Auto-reconnect disabled, skipping")
+            return
+        }
+
+        val maxRetryCount = 5
+        val retryDelayMs = 5000L
+
+        if (currentState.connectionRetryCount >= maxRetryCount) {
+            Log.w(TAG, "Max retry attempts reached, giving up")
+            _connectionManagementState.update {
+                it.copy(connectionMode = ConnectionMode.ERROR)
+            }
+            return
+        }
+
+        Log.d(TAG, "Scheduling auto-reconnect attempt ${currentState.connectionRetryCount + 1}/$maxRetryCount in ${retryDelayMs}ms")
+        autoReconnectJob = CoroutineScope(Dispatchers.IO).launch {
+            delay(retryDelayMs)
+
+            _connectionManagementState.update {
+                it.copy(
+                    connectionRetryCount = it.connectionRetryCount + 1,
+                    connectionMode = ConnectionMode.CONNECTING
+                )
+            }
+
+            // Update connection state to show connecting
+            _connectionState.update {
+                it.copy(isConnecting = true, errorMessage = null)
+            }
+
+            // Trigger reconnect with latest config from ConfigurationManager
+            try {
+                val config = configurationManager.getCurrentConfig()
+                Log.i(TAG, "Attempting auto-reconnect with latest config...")
+                startRealtimeSession(config).collect { event ->
+                    // Events are handled internally by the service
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Auto-reconnect failed", e)
+                // Schedule another retry
+                scheduleAutoReconnect()
+            }
+        }
+    }
+
+    override suspend fun manualDisconnect() {
+        Log.i(TAG, "Manual disconnect requested")
+
+        // Cancel any pending auto-reconnect
+        autoReconnectJob?.cancel()
+        autoReconnectJob = null
+
+        // Update state
+        connectionMutex.withLock {
+            _isManuallyDisconnected.update { true }
+            _connectionManagementState.update {
+                it.copy(
+                    isManuallyDisconnected = true,
+                    connectionMode = ConnectionMode.MANUALLY_DISCONNECTED,
+                    isAutoReconnectEnabled = false
+                )
+            }
+
+            // Close microphone first
+            toggleMicrophone(false)
+
+            // Then disconnect
+            stopRealtimeSession()
+        }
+
+        Log.i(TAG, "Manual disconnect complete, auto-reconnect paused")
+    }
+
+    override suspend fun manualReconnect() {
+        Log.i(TAG, "Manual reconnect requested")
+
+        connectionMutex.withLock {
+            // Reset disconnect state
+            _isManuallyDisconnected.update { false }
+            _connectionManagementState.update {
+                it.copy(
+                    isManuallyDisconnected = false,
+                    connectionMode = ConnectionMode.CONNECTING,
+                    isAutoReconnectEnabled = true,
+                    connectionRetryCount = 0
+                )
+            }
+
+            // Update connection state to clear manually disconnected flag
+            _connectionState.update {
+                it.copy(
+                    isManuallyDisconnected = false,
+                    isConnecting = true,
+                    errorMessage = null
+                )
+            }
+
+            // Get latest config from ConfigurationManager
+            try {
+                val config = configurationManager.getCurrentConfig()
+
+                // Start new session in a separate coroutine to not block
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        startRealtimeSession(config).collect { event ->
+                            // Events are handled internally by the service
+                        }
+
+                        // If glasses are awake, open mic after connection
+                        if (_connectionManagementState.value.isGlassesAwake) {
+                            Log.d(TAG, "Glasses are awake, opening microphone after reconnect")
+                            toggleMicrophone(true)
+                        }
+
+                        Log.i(TAG, "Manual reconnect complete")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Manual reconnect failed", e)
+                        _connectionState.update {
+                            it.copy(errorMessage = "Reconnect failed: ${e.message}")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get config for reconnect", e)
+                _connectionState.update {
+                    it.copy(errorMessage = "Failed to get configuration: ${e.message}")
+                }
+            }
+        }
+
+        Log.i(TAG, "Manual reconnect initiated, auto-reconnect resumed")
     }
 }

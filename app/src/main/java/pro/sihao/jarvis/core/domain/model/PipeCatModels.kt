@@ -6,7 +6,7 @@ import java.util.Date
  * Configuration for PipeCat sessions
  */
 data class PipeCatConfig(
-    val enableMic: Boolean = true,
+    val enableMic: Boolean = false,
     val enableCam: Boolean = false,
     val botId: String? = null,
     val baseUrl: String,
@@ -53,11 +53,46 @@ enum class TransportState {
 }
 
 /**
+ * Connection mode for connection lifecycle management
+ */
+enum class ConnectionMode {
+    NEVER_CONNECTED,
+    CONNECTING,
+    CONNECTED,
+    DISCONNECTING,
+    MANUALLY_DISCONNECTED,
+    AUTO_DISCONNECTED,
+    ERROR
+}
+
+/**
+ * Microphone state for microphone lifecycle management
+ */
+enum class MicrophoneState {
+    CLOSED,
+    OPENING,
+    OPEN,
+    CLOSING
+}
+
+/**
  * Data for bot ready event
  */
 data class BotReadyData(
     val botId: String,
     val capabilities: List<String> = emptyList()
+)
+
+/**
+ * Connection management state for tracking connection lifecycle and manual control
+ */
+data class ConnectionManagementState(
+    val connectionMode: ConnectionMode = ConnectionMode.NEVER_CONNECTED,
+    val microphoneState: MicrophoneState = MicrophoneState.CLOSED,
+    val isAutoReconnectEnabled: Boolean = true,
+    val isManuallyDisconnected: Boolean = false,
+    val isGlassesAwake: Boolean = false,
+    val connectionRetryCount: Int = 0
 )
 
 /**
@@ -73,7 +108,9 @@ data class PipeCatConnectionState(
     val userAudioLevel: Float = 0f,
     val errorMessage: String? = null,
     val config: PipeCatConfig? = null,
-    val transportState: TransportState = TransportState.IDLE
+    val transportState: TransportState = TransportState.IDLE,
+    val connectionManagementState: ConnectionManagementState = ConnectionManagementState(),
+    val isManuallyDisconnected: Boolean = false
 )
 
 /**

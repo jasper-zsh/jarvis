@@ -6,7 +6,8 @@ import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class MessageWithType(
-    @SerialName("___type___") val type: String
+    @SerialName("___type___") val type: String? = null,
+    @SerialName("___frame___") val frame: String? = null
 )
 
 @Serializable

@@ -44,7 +44,9 @@ class PipeCatViewModel @Inject constructor(
                         isConnected = state.isConnected,
                         errorMessage = state.errorMessage,
                         isManuallyDisconnected = state.isManuallyDisconnected,
-                        canAutoReconnect = state.connectionManagementState.isAutoReconnectEnabled
+                        canAutoReconnect = state.connectionManagementState.isAutoReconnectEnabled,
+                        // Sync microphone state from service to UI
+                        microphoneEnabled = state.connectionManagementState.microphoneState == pro.sihao.jarvis.core.domain.model.MicrophoneState.OPEN
                     )
                 }
             }

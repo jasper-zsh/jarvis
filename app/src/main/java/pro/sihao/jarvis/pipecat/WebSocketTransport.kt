@@ -216,6 +216,9 @@ class WebSocketTransport(
                                             val msg = JSON_INSTANCE.decodeFromJsonElement<MsgServerToClient>(frame.message)
                                             transportContext.onMessage(msg)
                                         }
+                                        else -> {
+                                            Log.i(TAG, "Received other frame ${msgWithType.frame}")
+                                        }
                                     }
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to parse message", e)

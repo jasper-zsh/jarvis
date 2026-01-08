@@ -66,12 +66,8 @@ class PipeCatConnectionManager @Inject constructor(
             }
 
             is PipeCatEvent.BotReady -> {
-                try {
-                    CxrApi.getInstance().sendAsrContent("")
-                    Log.d(TAG, "Bot ready - 向glasses发送ASR内容")
-                } catch (e: Exception) {
-                    Log.e(TAG, "向glasses发送ASR内容失败", e)
-                }
+                // 空白ASR发送改为在眼镜唤醒时处理，不再在BotReady时发送
+                Log.d(TAG, "Bot ready - 连接已建立")
             }
 
             is PipeCatEvent.Bye,

@@ -64,4 +64,10 @@ interface PipeCatService {
      * Get connection management state
      */
     val connectionManagementState: StateFlow<ConnectionManagementState>
+
+    /**
+     * Update glasses awake state
+     * @param isAwake Whether glasses are awake
+     */
+    fun updateGlassesAwakeState(isAwake: Boolean)
 }

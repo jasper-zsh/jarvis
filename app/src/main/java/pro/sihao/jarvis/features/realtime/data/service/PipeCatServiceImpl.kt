@@ -333,14 +333,16 @@ class PipeCatServiceImpl @Inject constructor(
                     data: LLMFunctionCallData,
                     onResult: (Value) -> Unit
                 ) {
-                    Log.d(TAG, "CloseWhenNothingToDo invoked - triggering disconnect")
+                    Log.d(TAG, "CloseWhenNothingToDo invoked - closing microphone")
                     try {
-                        // Trigger disconnect - this will call onDisconnected() which sends exit event
+                        // Close microphone instead of disconnecting (connection is now persistent)
                         CoroutineScope(Dispatchers.Main).launch {
-                            pipecatClient?.disconnect()?.displayErrors()
+                            toggleMicrophone(false)
+                            CxrApi.getInstance().sendExitEvent()
+                            Log.d(TAG, "Microphone closed by CloseWhenNothingToDo")
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error triggering disconnect", e)
+                        Log.e(TAG, "Error closing microphone", e)
                     }
                     onResult(Value.Object())
                 }
@@ -374,7 +376,7 @@ class PipeCatServiceImpl @Inject constructor(
                                 val encoded = Base64.encode(p1)
                                 try {
                                     CoroutineScope(Dispatchers.IO).launch {
-                                        pipecatClient?.sendClientRequest(
+                                        pipecatClient?.sendClientMessage(
                                             "pic-result", Value.Object(
                                                 Pair("uuid", Value.Str(picUuid)),
                                                 Pair("data", Value.Str(encoded))
@@ -509,7 +511,12 @@ class PipeCatServiceImpl @Inject constructor(
                 pipecatClient?.enableMic(enabled)?.displayErrors()
             }
             _connectionState.update {
-                it.copy(config = it.config?.copy(enableMic = enabled))
+                it.copy(
+                    config = it.config?.copy(enableMic = enabled),
+                    connectionManagementState = it.connectionManagementState.copy(
+                        microphoneState = if (enabled) MicrophoneState.OPEN else MicrophoneState.CLOSED
+                    )
+                )
             }
             _connectionManagementState.update {
                 it.copy(
@@ -522,6 +529,20 @@ class PipeCatServiceImpl @Inject constructor(
                 it.copy(errorMessage = e.message ?: "Microphone error")
             }
         }
+    }
+
+    override fun updateGlassesAwakeState(isAwake: Boolean) {
+        _connectionState.update {
+            it.copy(
+                connectionManagementState = it.connectionManagementState.copy(
+                    isGlassesAwake = isAwake
+                )
+            )
+        }
+        _connectionManagementState.update {
+            it.copy(isGlassesAwake = isAwake)
+        }
+        Log.d(TAG, "Glasses awake state updated: $isAwake")
     }
 
     override fun toggleCamera(enabled: Boolean) {
@@ -555,9 +576,11 @@ class PipeCatServiceImpl @Inject constructor(
 
         if (currentState.connectionRetryCount >= maxRetryCount) {
             Log.w(TAG, "Max retry attempts reached, giving up")
-            _connectionManagementState.update {
-                it.copy(connectionMode = ConnectionMode.ERROR)
+            val updatedState = currentState.copy(connectionMode = ConnectionMode.ERROR)
+            _connectionState.update {
+                it.copy(connectionManagementState = updatedState)
             }
+            _connectionManagementState.update { updatedState }
             return
         }
 
@@ -565,12 +588,14 @@ class PipeCatServiceImpl @Inject constructor(
         autoReconnectJob = CoroutineScope(Dispatchers.IO).launch {
             delay(retryDelayMs)
 
-            _connectionManagementState.update {
-                it.copy(
-                    connectionRetryCount = it.connectionRetryCount + 1,
-                    connectionMode = ConnectionMode.CONNECTING
-                )
+            val updatedState = _connectionManagementState.value.copy(
+                connectionRetryCount = _connectionManagementState.value.connectionRetryCount + 1,
+                connectionMode = ConnectionMode.CONNECTING
+            )
+            _connectionState.update {
+                it.copy(connectionManagementState = updatedState)
             }
+            _connectionManagementState.update { updatedState }
 
             // Update connection state to show connecting
             _connectionState.update {
@@ -602,13 +627,18 @@ class PipeCatServiceImpl @Inject constructor(
         // Update state
         connectionMutex.withLock {
             _isManuallyDisconnected.update { true }
-            _connectionManagementState.update {
+            val updatedState = _connectionManagementState.value.copy(
+                isManuallyDisconnected = true,
+                connectionMode = ConnectionMode.MANUALLY_DISCONNECTED,
+                isAutoReconnectEnabled = false
+            )
+            _connectionState.update {
                 it.copy(
                     isManuallyDisconnected = true,
-                    connectionMode = ConnectionMode.MANUALLY_DISCONNECTED,
-                    isAutoReconnectEnabled = false
+                    connectionManagementState = updatedState
                 )
             }
+            _connectionManagementState.update { updatedState }
 
             // Close microphone first
             toggleMicrophone(false)
@@ -626,23 +656,21 @@ class PipeCatServiceImpl @Inject constructor(
         connectionMutex.withLock {
             // Reset disconnect state
             _isManuallyDisconnected.update { false }
-            _connectionManagementState.update {
-                it.copy(
-                    isManuallyDisconnected = false,
-                    connectionMode = ConnectionMode.CONNECTING,
-                    isAutoReconnectEnabled = true,
-                    connectionRetryCount = 0
-                )
-            }
-
-            // Update connection state to clear manually disconnected flag
+            val updatedState = _connectionManagementState.value.copy(
+                isManuallyDisconnected = false,
+                connectionMode = ConnectionMode.CONNECTING,
+                isAutoReconnectEnabled = true,
+                connectionRetryCount = 0
+            )
             _connectionState.update {
                 it.copy(
                     isManuallyDisconnected = false,
                     isConnecting = true,
-                    errorMessage = null
+                    errorMessage = null,
+                    connectionManagementState = updatedState
                 )
             }
+            _connectionManagementState.update { updatedState }
 
             // Get latest config from ConfigurationManager
             try {

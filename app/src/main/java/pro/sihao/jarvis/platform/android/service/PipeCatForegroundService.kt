@@ -26,6 +26,7 @@ import pro.sihao.jarvis.MainActivity
 import pro.sihao.jarvis.core.domain.model.PipeCatConnectionState
 import pro.sihao.jarvis.core.domain.model.PipeCatConfig
 import pro.sihao.jarvis.core.domain.model.PipeCatEvent
+import pro.sihao.jarvis.core.domain.model.MicrophoneState
 import pro.sihao.jarvis.core.domain.service.PipeCatService
 import pro.sihao.jarvis.features.realtime.data.config.ConfigurationManager
 import pro.sihao.jarvis.features.realtime.data.service.PipeCatServiceImpl
@@ -512,11 +513,26 @@ class PipeCatForegroundService : Service() {
 
                 Log.d(TAG, "Glasses AI assist state changed: isRunning=$isAiAssistRunning, " +
                           "isConnected=${connectionState.isConnected}, " +
-                          "isManuallyDisconnected=${mgmtState.isManuallyDisconnected}")
+                          "isManuallyDisconnected=${mgmtState.isManuallyDisconnected}, " +
+                          "currentGlassesAwake=${mgmtState.isGlassesAwake}, " +
+                          "micState=${mgmtState.microphoneState}")
 
-                // Update glasses awake state
-                if (isAiAssistRunning && !mgmtState.isGlassesAwake) {
+                if (isAiAssistRunning) {
+                    // AI assistant waking up
+                    if (mgmtState.isGlassesAwake) {
+                        Log.d(TAG, "Glasses already awake, skipping duplicate wake-up")
+                        return@launch
+                    }
+
                     Log.d(TAG, "Glasses woke up")
+
+                    // 立即发送空白ASR清空眼镜显示
+                    try {
+                        CxrApi.getInstance().sendAsrContent("")
+                        Log.d(TAG, "Sent empty ASR content on glasses wake-up")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to send empty ASR content", e)
+                    }
 
                     // Only open mic if connected and not manually disconnected
                     if (connectionState.isConnected && !mgmtState.isManuallyDisconnected) {
@@ -526,19 +542,25 @@ class PipeCatForegroundService : Service() {
                         Log.d(TAG, "Glasses woke up but connection is manually disconnected, ignoring")
                     }
 
-                    // Update glasses awake state in connection management
-                    pipeCatService.connectionManagementState.value.let { currentState ->
-                        // Note: We can't directly update _connectionManagementState from here,
-                        // but the glasses state is tracked for reference in manualReconnect()
-                    }
-                } else if (!isAiAssistRunning && mgmtState.isGlassesAwake) {
+                    // Update glasses awake state
+                    pipeCatService.updateGlassesAwakeState(true)
+
+                } else {
+                    // AI assistant going to sleep - ALWAYS process to ensure mic closes
                     Log.d(TAG, "Glasses went to sleep")
 
-                    // Close microphone on sleep
-                    if (connectionState.isConnected) {
-                        Log.d(TAG, "Closing microphone on glasses sleep")
+                    // Close microphone on sleep, even if state was out of sync
+                    if (connectionState.isConnected && mgmtState.microphoneState == MicrophoneState.OPEN) {
+                        Log.d(TAG, "Closing microphone on glasses sleep (mic was open)")
                         pipeCatService.toggleMicrophone(false)
+                    } else if (!connectionState.isConnected) {
+                        Log.d(TAG, "Not connected, skipping microphone close")
+                    } else {
+                        Log.d(TAG, "Microphone already closed, skipping")
                     }
+
+                    // Always update glasses awake state to false
+                    pipeCatService.updateGlassesAwakeState(false)
                 }
 
             } catch (e: Exception) {

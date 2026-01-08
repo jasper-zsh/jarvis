@@ -21,7 +21,8 @@
       "WebSearch",
       "mcp__web-reader__webReader",
       "Bash(curl:*)",
-      "Bash(java:*)"
+      "Bash(java:*)",
+      "Bash(grep:*)"
     ]
   }
 }

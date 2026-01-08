@@ -23,12 +23,8 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.os.Build
 import android.util.Log
-import com.rokid.cxr.client.extend.CxrApi
-import com.rokid.cxr.client.extend.listeners.AudioStreamListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,6 +44,12 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 import pro.sihao.jarvis.core.domain.model.GlassesConnectionStatus
 import pro.sihao.jarvis.platform.android.connection.GlassesConnectionManager
+import pro.sihao.jarvis.pipecat.audio.AudioBuffer
+import pro.sihao.jarvis.pipecat.audio.AudioSender
+import pro.sihao.jarvis.pipecat.audio.AudioSource
+import pro.sihao.jarvis.pipecat.audio.GlassesMicAudioSource
+import pro.sihao.jarvis.pipecat.audio.PhoneMicAudioSource
+import pro.sihao.jarvis.pipecat.audio.UnifiedAudioBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.io.encoding.Base64
 
@@ -76,14 +78,11 @@ private val LOCAL_PARTICIPANT = Participant(
 class WebSocketTransport(
     private val context: Context,
     private val glassesConnectionManager: GlassesConnectionManager
-) : Transport<WebSocketTransportConnectParams>(), AudioStreamListener {
+) : Transport<WebSocketTransportConnectParams>() {
 
     companion object {
         private const val TAG = "WebSocketTransport"
         private const val SAMPLE_RATE = 16000
-        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-        private const val BUFFER_SIZE_FACTOR = 4
         private val EMPTY_TRACKS = Tracks(
             local = ParticipantTracks(audio = null, video = null),
             bot = null
@@ -113,11 +112,15 @@ class WebSocketTransport(
     private var selectedMicId: MediaDeviceId? = null
     private var micEnabled = AtomicBoolean(false)
 
-    // Audio recording for phone mic
-    private var audioRecord: AudioRecord? = null
-    private var audioRecordJob: Job? = null
+    // Unified audio system
+    private lateinit var audioBuffer: AudioBuffer
+    private lateinit var audioSender: AudioSender
+    private val audioSources = mapOf(
+        "glasses" to GlassesMicAudioSource(CoroutineScope(Dispatchers.IO)),
+        "speakerphone" to PhoneMicAudioSource(context, CoroutineScope(Dispatchers.IO))
+    )
+    private var currentAudioSource: AudioSource? = null
     private val audioScope = CoroutineScope(Dispatchers.IO)
-    private var bufferSize: Int = 0
 
     // Audio playback for received audio
     private var audioTrack: AudioTrack? = null
@@ -126,7 +129,15 @@ class WebSocketTransport(
     override fun initialize(ctx: TransportContext) {
         transportContext = ctx
         thread = ctx.thread
-        bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT) * BUFFER_SIZE_FACTOR
+
+        // Initialize unified audio buffer (2560 bytes = 80ms at 16kHz)
+        audioBuffer = UnifiedAudioBuffer(
+            frameSize = (SAMPLE_RATE * 2 * 80) / 1000, // 2560 bytes
+            channelCapacity = 10 // Buffer up to 10 frames (800ms)
+        )
+
+        // Initialize audio sender with WebSocket provider
+        audioSender = AudioSender(audioBuffer) { webSocket }
     }
 
     override fun deserializeConnectParams(
@@ -143,6 +154,9 @@ class WebSocketTransport(
         disconnect().logError(TAG, "Disconnect triggered by release() failed")
         stopAudioRecording()
         stopAudioPlayback()
+        currentAudioSource?.stop()
+        audioSender.stop()
+        audioBuffer.close()
         audioScope.cancel()
     }
 
@@ -173,6 +187,12 @@ class WebSocketTransport(
                                 cb.onConnected()
                                 cb.onParticipantJoined(LOCAL_PARTICIPANT)
                                 cb.onParticipantJoined(BOT_PARTICIPANT)
+
+                                // Enable mic if configured in options
+                                if (transportContext.options.enableMic) {
+                                    enableMic(true).logError(TAG, "Failed to enable mic")
+                                }
+
                                 promise.resolveOk(Unit)
                             }
                         }
@@ -363,119 +383,54 @@ class WebSocketTransport(
         return EMPTY_TRACKS
     }
 
-    // AudioStreamListener implementation for glasses mic
-    override fun onStartAudioStream(p0: Int, p1: String?) {
-        Log.d(TAG, "onStartAudioStream: rate=$p0, id=$p1")
-    }
-
-    override fun onAudioStream(data: ByteArray?, offset: Int, length: Int) {
-        if (data != null && micEnabled.get() && selectedMicId?.id == "glasses") {
-            // Send glasses audio data through WebSocket
-            val audioData = if (offset == 0 && length == data.size) {
-                data
-            } else {
-                data.copyOfRange(offset, offset + length)
-            }
-
-            // Convert to ByteString and send
-            webSocket?.send(ByteString.of(*audioData))
-        }
-    }
-
     private fun startAudioRecording() {
-        val micId = selectedMicId?.id
+        var micId = selectedMicId?.id
 
-        when (micId) {
-            "glasses" -> {
-                Log.i(TAG, "Starting glasses audio recording")
-                // Register this transport as the audio stream listener for glasses
-                CxrApi.getInstance().setAudioStreamListener(this)
-            }
-            "speakerphone" -> {
-                Log.i(TAG, "Starting phone microphone recording")
-                startPhoneMicRecording()
-            }
-            else -> {
-                Log.w(TAG, "No mic selected, defaulting to speakerphone")
+        // Auto-detect: if no mic selected, check if glasses are connected
+        if (micId == null) {
+            val connectionState = glassesConnectionManager.connectionState.value
+            val shouldUseGlasses = connectionState.connectionStatus == GlassesConnectionStatus.CONNECTED
+
+            if (shouldUseGlasses) {
+                Log.i(TAG, "No mic selected, auto-detected glasses, using glasses mic")
+                selectedMicId = MediaDeviceId("glasses")
+                micId = "glasses"
+            } else {
+                Log.i(TAG, "No mic selected and glasses not connected, using speakerphone")
                 selectedMicId = MediaDeviceId("speakerphone")
-                startPhoneMicRecording()
+                micId = "speakerphone"
             }
+        }
+
+        // Stop current audio source if any
+        currentAudioSource?.stop()
+
+        // Start audio sender consumer
+        audioSender.start(audioScope)
+
+        // Start selected audio source
+        val audioSource = audioSources[micId]
+        if (audioSource != null) {
+            Log.i(TAG, "Starting audio source: $micId")
+            currentAudioSource = audioSource
+            audioSource.start(audioBuffer)
+        } else {
+            Log.e(TAG, "Unknown audio source: $micId")
         }
     }
 
     private fun stopAudioRecording() {
         Log.i(TAG, "Stopping audio recording")
 
-        // Stop glasses audio
-        CxrApi.getInstance().setAudioStreamListener(null)
+        // Stop current audio source
+        currentAudioSource?.stop()
+        currentAudioSource = null
 
-        // Stop phone mic recording
-        audioRecordJob?.cancel()
-        audioRecordJob = null
-        audioRecord?.release()
-        audioRecord = null
-    }
+        // Stop audio sender
+        audioSender.stop()
 
-    private fun startPhoneMicRecording() {
-        try {
-            // Check and request audio permissions
-            val audioRecordPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
-            if (audioRecordPermission != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                Log.e(TAG, "RECORD_AUDIO permission not granted")
-                return
-            }
-
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                SAMPLE_RATE,
-                CHANNEL_CONFIG,
-                AUDIO_FORMAT,
-                bufferSize
-            )
-
-            audioRecord?.startRecording()
-
-            audioRecordJob = audioScope.launch {
-                val buffer = ByteArray(bufferSize)
-                val accumulatedAudio = mutableListOf<Byte>()
-                val batchSize = (SAMPLE_RATE * 2 * 50) / 1000 // 50ms of audio data (16-bit samples)
-                var lastSendTime = System.currentTimeMillis()
-
-                while (micEnabled.get() && audioRecord != null) {
-                    val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
-                    if (read > 0) {
-                        // Accumulate audio data
-                        accumulatedAudio.addAll(buffer.toList().take(read))
-
-                        val currentTime = System.currentTimeMillis()
-                        val timeSinceLastSend = currentTime - lastSendTime
-
-                        // Send every 50ms or when accumulated enough data
-                        if (accumulatedAudio.size >= batchSize || timeSinceLastSend >= 50) {
-                            val audioData = accumulatedAudio.toByteArray()
-                            accumulatedAudio.clear()
-
-                            // Send audio data through WebSocket
-                            val frame = AudioFrame(
-                                Base64.encode(audioData),
-                                audioRecord!!.sampleRate,
-                                audioRecord!!.channelCount
-                            )
-                            val data = JSON_INSTANCE.encodeToString(frame)
-                            webSocket?.send(data)
-
-                            lastSendTime = currentTime
-                        }
-                    }
-                }
-            }
-
-            Log.i(TAG, "Phone microphone recording started successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start phone microphone recording", e)
-            audioRecord?.release()
-            audioRecord = null
-        }
+        // Clear audio buffer
+        audioBuffer.clear()
     }
 
     private fun initAudioPlayback(sampleRate: Int, channels: Int) {

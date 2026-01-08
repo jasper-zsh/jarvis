@@ -20,7 +20,8 @@
       "mcp__zread__read_file",
       "WebSearch",
       "mcp__web-reader__webReader",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(java:*)"
     ]
   }
 }

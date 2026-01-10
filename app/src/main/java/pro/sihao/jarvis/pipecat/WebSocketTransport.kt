@@ -30,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -111,6 +112,9 @@ class WebSocketTransport(
     // Mic selection
     private var selectedMicId: MediaDeviceId? = null
     private var micEnabled = AtomicBoolean(false)
+    private val isReleased = AtomicBoolean(false)
+    private val cleanupMutex = Mutex()
+    private var notifiedDisconnected = false
 
     // Unified audio system
     private lateinit var audioBuffer: AudioBuffer
@@ -151,19 +155,25 @@ class WebSocketTransport(
     override fun initDevices(): Future<Unit, RTVIError> = resolvedPromiseOk(thread, Unit)
 
     override fun release() {
-        disconnect().logError(TAG, "Disconnect triggered by release() failed")
-        stopAudioRecording()
-        stopAudioPlayback()
-        currentAudioSource?.stop()
-        audioSender.stop()
-        audioBuffer.close()
-        audioScope.cancel()
+        Log.i(TAG, "release() called")
+        performDisconnect(triggeredBy = "release")
+        performResourceRelease()
     }
 
     override fun connect(transportParams: WebSocketTransportConnectParams): Future<Unit, RTVIError> =
         thread.runOnThreadReturningFuture {
             withPromise(thread) { promise ->
                 try {
+                    // Guard against connecting after release
+                    if (isReleased.get()) {
+                        Log.w(TAG, "Cannot connect: transport already released")
+                        promise.resolveErr(RTVIError.OtherError("Transport released, cannot reconnect"))
+                        return@withPromise
+                    }
+
+                    // Reset disconnected notification flag for new connection
+                    notifiedDisconnected = false
+
                     Log.i(TAG, "Connecting to WebSocket: ${transportParams.wsUrl}")
                     setState(TransportState.Connecting)
 
@@ -233,14 +243,48 @@ class WebSocketTransport(
 
                         override fun onClosing(ws: WebSocket, code: Int, reason: String) {
                             Log.i(TAG, "WebSocket closing: $code - $reason")
+
+                            // Trigger graceful disconnect of Pipecat client
+                            // This allows the SDK to send goodbye messages and clean up internal state
+                            thread.runOnThread {
+                                try {
+                                    setState(TransportState.Disconnected)
+
+                                    // Notify transport context that connection is ending
+                                    transportContext.onConnectionEnd()
+
+                                    // Stop audio recording first (don't send more data)
+                                    stopAudioRecording()
+
+                                    // IMPORTANT: Notify callbacks immediately in onClosing
+                                    // onClosed may not be called if SDK cleans up resources first
+                                    // This ensures UI updates and auto-reconnect triggers
+                                    notifyDisconnected()
+
+                                    Log.d(TAG, "onClosing: Pipecat disconnect initiated and callbacks notified")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error in onClosing handler", e)
+                                }
+                            }
                         }
 
                         override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                             Log.i(TAG, "WebSocket closed: $code - $reason")
+
                             thread.runOnThread {
-                                setState(TransportState.Disconnected)
-                                transportContext.onConnectionEnd()
-                                transportContext.callbacks.onDisconnected()
+                                try {
+                                    setState(TransportState.Disconnected)
+
+                                    // WebSocket is fully closed, now safe to release all resources
+                                    performResourceRelease()
+
+                                    // Notify callbacks after cleanup (only once)
+                                    notifyDisconnected()
+
+                                    Log.d(TAG, "onClosed: Resource release complete")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error in onClosed handler", e)
+                                }
                             }
                         }
 
@@ -248,7 +292,15 @@ class WebSocketTransport(
                             Log.e(TAG, "WebSocket error", t)
                             thread.runOnThread {
                                 setState(TransportState.Disconnected)
+
+                                // On failure, also release resources to prevent leaks
+                                performResourceRelease()
+
+                                // Reject connection promise
                                 promise.resolveErr(RTVIError.OtherError(t.message ?: "WebSocket connection failed"))
+
+                                // Notify callbacks of disconnection (only once)
+                                notifyDisconnected()
                             }
                         }
                     })
@@ -264,11 +316,23 @@ class WebSocketTransport(
         withPromise(thread) { promise ->
             try {
                 Log.i(TAG, "Disconnecting WebSocket")
+
+                // Stop audio recording immediately
                 stopAudioRecording()
+
+                // Close websocket gracefully (triggers onClosed → resource release)
                 webSocket?.close(1000, "Client disconnect")
                 webSocket = null
+
                 setState(TransportState.Disconnected)
-                transportContext.callbacks.onDisconnected()
+
+                // Notify callbacks immediately so UI updates right away
+                // onClosed will also try to notify, but notifyDisconnected() is idempotent
+                notifyDisconnected()
+
+                // Note: We don't call performResourceRelease() here
+                // Resource release happens in onClosed or via explicit release() call
+
                 promise.resolveOk(Unit)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to disconnect", e)
@@ -500,6 +564,105 @@ class WebSocketTransport(
             Log.i(TAG, "Audio playback stopped")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to stop audio playback", e)
+        }
+    }
+
+    private fun performDisconnect(triggeredBy: String) {
+        if (isReleased.get()) {
+            Log.d(TAG, "Already released, skipping disconnect (triggered by: $triggeredBy)")
+            return
+        }
+
+        // Try to disconnect gracefully, but don't fail if already disconnected
+        try {
+            disconnect().logError(TAG, "Disconnect triggered by $triggeredBy failed")
+        } catch (e: Exception) {
+            Log.w(TAG, "Disconnect already completed or failed, continuing with release", e)
+        }
+    }
+
+    private fun notifyDisconnected() {
+        if (!notifiedDisconnected) {
+            Log.i(TAG, "Notifying callbacks of disconnection - notifying transportContext.callbacks.onDisconnected()")
+            notifiedDisconnected = true
+            try {
+                transportContext.callbacks.onDisconnected()
+                Log.i(TAG, "Successfully notified callbacks of disconnection")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error notifying callbacks of disconnection", e)
+            }
+        } else {
+            Log.d(TAG, "Already notified callbacks of disconnection, skipping")
+        }
+    }
+
+    private fun performResourceRelease() {
+        // Use mutex to prevent concurrent cleanup
+        if (!cleanupMutex.tryLock()) {
+            Log.d(TAG, "Cleanup already in progress, skipping")
+            return
+        }
+
+        try {
+            if (!isReleased.compareAndSet(false, true)) {
+                Log.d(TAG, "Resources already released")
+                return
+            }
+
+            Log.i(TAG, "Releasing all resources")
+            releaseAllResources()
+        } finally {
+            cleanupMutex.unlock()
+        }
+    }
+
+    private fun releaseAllResources() {
+        // Release each resource category independently with error handling
+        releaseAudioRecording()
+        releaseAudioPlayback()
+        releaseAudioComponents()
+    }
+
+    private fun releaseAudioRecording() {
+        try {
+            stopAudioRecording()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping audio recording", e)
+        }
+    }
+
+    private fun releaseAudioPlayback() {
+        try {
+            stopAudioPlayback()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping audio playback", e)
+        }
+    }
+
+    private fun releaseAudioComponents() {
+        try {
+            currentAudioSource?.stop()
+            currentAudioSource = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping audio source", e)
+        }
+
+        try {
+            audioSender.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping audio sender", e)
+        }
+
+        try {
+            audioBuffer.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing audio buffer", e)
+        }
+
+        try {
+            audioScope.cancel()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error canceling audio scope", e)
         }
     }
 }
